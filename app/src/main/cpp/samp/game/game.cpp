@@ -864,8 +864,8 @@ void CGame::Process() {
     uint32_t v3; // r5
 
     //FIXME
-    ((void(*)())(g_libGTASA + 0x49B728))(); // CPad::UpdatePads()
     PcInputApplyMouse();
+    ((void(*)())(g_libGTASA + 0x49B728))(); // CPad::UpdatePads()
     ((void(*)())(g_libGTASA + 0x500D34))(); // CTouchInterface::Clear()
     ((void(*)())(g_libGTASA + 0x72D330))(); // CHID::Update()
 

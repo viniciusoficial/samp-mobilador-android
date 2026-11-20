@@ -74,6 +74,7 @@ void PcInputAddMouseDelta(float dx, float dy);
 void PcInputApplyMouse();
 void PcInputSetMouseOptions(float maxDelta, float smoothing);
 void PcInputSetMouseButton(int button, int action, bool pressed);
+bool PcInputIsMouseAimControlActive();
 void PcInputMouseLeave();
 int16_t PcInputApplyMouseLookX(int16_t current);
 int16_t PcInputApplyMouseLookY(int16_t current);

@@ -39,6 +39,7 @@ namespace
     std::atomic<float> g_mouseSmoothing{0.0f};
     std::atomic<int> g_primaryMouseAction{-1};
     std::atomic<int> g_secondaryMouseAction{-1};
+    std::atomic<bool> g_mouseAimControlActive{false};
     std::atomic<uint32_t> g_mouseReceivedCount{0};
     std::atomic<uint32_t> g_mouseAppliedCount{0};
     std::atomic<uint32_t> g_cameraAppliedCount{0};
@@ -129,6 +130,7 @@ void PcInputSetEnabled(bool enabled)
     g_smoothedMouseDeltaY = 0.0f;
     g_primaryMouseAction.store(-1);
     g_secondaryMouseAction.store(-1);
+    g_mouseAimControlActive.store(false);
 
     if (!enabled)
     {
@@ -305,8 +307,15 @@ void PcInputSetMouseButton(int button, int action, bool pressed)
         pressed = false;
     }
     mouseAction->store(pressed ? action : -1);
+    if (pressed && action == static_cast<int>(PcInputAction::AIM))
+        g_mouseAimControlActive.store(true);
     Log("[GAME-MOUSE] button=%d action=%d pressed=%d",
         button, action, pressed);
+}
+
+bool PcInputIsMouseAimControlActive()
+{
+    return g_mouseAimControlActive.load();
 }
 
 void PcInputMouseLeave()

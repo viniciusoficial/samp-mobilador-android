@@ -480,12 +480,14 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
     }
     else
     {
-        uint8_t old =   *pbyteCurrentPlayer;
-          *pbyteCurrentPlayer = byteCurPlayer;
-        uintptr_t result = CPad__GetEnterTargeting(thiz) ||
-                           PcInputIsPressed(PcInputAction::AIM);
+        uint8_t old = *pbyteCurrentPlayer;
+        *pbyteCurrentPlayer = byteCurPlayer;
+        const bool pcAimActive = PcInputIsPressed(PcInputAction::AIM);
+        const bool result = PcInputIsMouseAimControlActive()
+            ? pcAimActive
+            : CPad__GetEnterTargeting(thiz) || pcAimActive;
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = result;
-          *pbyteCurrentPlayer = old;
+        *pbyteCurrentPlayer = old;
         return result;
     }
 }
@@ -551,9 +553,11 @@ uint32_t CCamera_IsTargetingActive_hook(uintptr_t thiz, CPedGTA* pPed)
     {
         /* CCamera::IsTargetingActive */
         static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0x9F86F8);
-        uint32_t bIsTargeting =
-            CHook::CallFunction<bool>(g_libGTASA + 0x46DE58, &TheCamera) ||
-            PcInputIsPressed(PcInputAction::AIM);
+        const bool pcAimActive = PcInputIsPressed(PcInputAction::AIM);
+        uint32_t bIsTargeting = PcInputIsMouseAimControlActive()
+            ? pcAimActive
+            : CHook::CallFunction<bool>(g_libGTASA + 0x46DE58, &TheCamera) ||
+              pcAimActive;
 
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = bIsTargeting;
         return bIsTargeting;
