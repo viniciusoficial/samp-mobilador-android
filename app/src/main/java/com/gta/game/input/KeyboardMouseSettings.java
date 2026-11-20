@@ -80,6 +80,10 @@ public final class KeyboardMouseSettings {
 
     private static SettingsOverlay overlay;
     private static TextView stateView;
+    private static TextView mouseDiagnosticsView;
+    private static String mouseDiagnostics =
+            "Mouse: no events | capture=false | buttons L=false R=false | frames=0";
+    private static boolean showMouseDiagnostics;
     private static Button[] bindingButtons;
     private static int pendingCapture = -1;
     private static boolean enabled = true;
@@ -401,6 +405,22 @@ public final class KeyboardMouseSettings {
         content.addView(receivedState);
         stateView = receivedState;
 
+        CheckBox diagnosticsBox = new CheckBox(owner);
+        diagnosticsBox.setTextColor(Color.WHITE);
+        diagnosticsBox.setText("Show mouse diagnostics");
+        diagnosticsBox.setChecked(showMouseDiagnostics);
+        content.addView(diagnosticsBox);
+        TextView diagnostics = new TextView(owner);
+        diagnostics.setTextColor(0xFFADB6C5);
+        diagnostics.setText(mouseDiagnostics);
+        diagnostics.setVisibility(showMouseDiagnostics ? View.VISIBLE : View.GONE);
+        content.addView(diagnostics);
+        mouseDiagnosticsView = diagnostics;
+        diagnosticsBox.setOnCheckedChangeListener((button, checked) -> {
+            showMouseDiagnostics = checked;
+            diagnostics.setVisibility(checked ? View.VISIBLE : View.GONE);
+        });
+
         updateBindingButtons();
         updateSensitivityLabel(xLabel, sensitivityX, "Mouse X sensitivity");
         updateSensitivityLabel(yLabel, sensitivityY, "Mouse Y sensitivity");
@@ -560,7 +580,7 @@ public final class KeyboardMouseSettings {
 
         @Override
         public boolean dispatchTouchEvent(MotionEvent event) {
-            if ((event.getSource() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE &&
+            if (InputHandler.isMouseSource(event.getSource()) &&
                     isCapturingBinding() && captureMouse(event)) {
                 return true;
             }
@@ -569,7 +589,7 @@ public final class KeyboardMouseSettings {
 
         @Override
         public boolean dispatchGenericMotionEvent(MotionEvent event) {
-            if ((event.getSource() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE &&
+            if (InputHandler.isMouseSource(event.getSource()) &&
                     isCapturingBinding() && captureMouse(event)) {
                 return true;
             }
@@ -584,6 +604,7 @@ public final class KeyboardMouseSettings {
             synchronized (KeyboardMouseSettings.class) {
                 pendingCapture = -1;
                 stateView = null;
+                mouseDiagnosticsView = null;
                 bindingButtons = null;
                 overlay = null;
             }
@@ -743,5 +764,12 @@ public final class KeyboardMouseSettings {
             }
         }
         stateView.setText(state);
+    }
+
+    public static synchronized void updateMouseDiagnostics(String diagnostics) {
+        mouseDiagnostics = diagnostics;
+        if (mouseDiagnosticsView != null) {
+            mouseDiagnosticsView.setText(diagnostics);
+        }
     }
 }

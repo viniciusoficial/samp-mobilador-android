@@ -23,7 +23,9 @@ O projeto busca oferecer uma experiência próxima à do PC, mas nem todos os re
 
 ## Instalação
 
-Instale o APK gerado e siga as instruções do launcher para configurar os dados do jogo. Use somente arquivos de jogo obtidos por meios oficiais e não redistribua esses arquivos.
+Para testar esta versão, baixe o [APK Debug assinado](./GTA-2.11-debug.apk) incluído na raiz do repositório e siga as instruções do launcher para configurar os dados do jogo. Esse APK usa assinatura de desenvolvimento e não deve ser tratado como uma publicação de produção.
+
+Use somente arquivos de jogo obtidos por meios oficiais e não redistribua esses arquivos.
 
 ## Compilação
 
@@ -39,7 +41,7 @@ O APK de debug é gerado em:
 app/build/outputs/apk/debug/GTA-2.11-debug.apk
 ```
 
-Esse APK é destinado a testes e desenvolvimento; uma publicação exige uma build de release e assinatura apropriada.
+O arquivo [GTA-2.11-debug.apk](./GTA-2.11-debug.apk) na raiz é uma cópia assinada dessa build para instalação e testes. O APK de release gerado pelo Gradle não é assinado neste projeto; uma publicação exige assinatura apropriada.
 
 ## Créditos e marcas
 

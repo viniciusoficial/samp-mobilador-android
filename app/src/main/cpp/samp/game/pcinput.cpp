@@ -39,9 +39,9 @@ namespace
     std::atomic<float> g_mouseSmoothing{0.0f};
     std::atomic<int> g_primaryMouseAction{-1};
     std::atomic<int> g_secondaryMouseAction{-1};
-    uint32_t g_mouseReceivedCount = 0;
-    uint32_t g_mouseAppliedCount = 0;
-    uint32_t g_cameraAppliedCount = 0;
+    std::atomic<uint32_t> g_mouseReceivedCount{0};
+    std::atomic<uint32_t> g_mouseAppliedCount{0};
+    std::atomic<uint32_t> g_cameraAppliedCount{0};
     std::atomic<bool> g_textEntryActive{false};
     std::atomic<bool> g_nativeInterfaceActive{false};
 
@@ -223,9 +223,10 @@ void PcInputAddMouseDelta(float dx, float dy)
     std::lock_guard<std::mutex> lock(g_mouseDeltaMutex);
     g_mouseDeltaX = std::clamp(g_mouseDeltaX + dx, -32767.0f, 32767.0f);
     g_mouseDeltaY = std::clamp(g_mouseDeltaY + dy, -32767.0f, 32767.0f);
-    if (++g_mouseReceivedCount % 60 == 1)
+    const uint32_t received = g_mouseReceivedCount.fetch_add(1) + 1;
+    if (received % 60 == 1)
     {
-        Log("[C++] mouse delta received=(%.2f,%.2f) accumulated=(%.2f,%.2f)",
+        Log("[CPP-MOUSE] received=(%.2f,%.2f) accumulated=(%.2f,%.2f)",
             dx, dy, g_mouseDeltaX, g_mouseDeltaY);
     }
 }
@@ -241,10 +242,10 @@ void PcInputApplyMouse()
         g_mouseDeltaX = 0.0f;
         g_mouseDeltaY = 0.0f;
     }
-    const uint32_t frame = ++g_mouseAppliedCount;
+    const uint32_t frame = g_mouseAppliedCount.fetch_add(1) + 1;
     if (frame % 120 == 1)
     {
-        Log("[C++] frame=%u consumed mouse delta=(%.2f,%.2f)",
+        Log("[FRAME-MOUSE] frame=%u consumed=(%.2f,%.2f)",
             frame, dx, dy);
     }
 
@@ -304,7 +305,8 @@ void PcInputSetMouseButton(int button, int action, bool pressed)
         pressed = false;
     }
     mouseAction->store(pressed ? action : -1);
-    Log("[GAME] mouse button=%d action=%d pressed=%d", button, action, pressed);
+    Log("[GAME-MOUSE] button=%d action=%d pressed=%d",
+        button, action, pressed);
 }
 
 void PcInputMouseLeave()
@@ -326,10 +328,11 @@ int16_t PcInputApplyMouseLookX(int16_t current)
     const int result = std::clamp(static_cast<int>(current) + appliedDelta, -32768, 32767);
     static uint32_t lookCallCount = 0;
     const bool logCall = ++lookCallCount % 120 == 1;
-    const bool logMotion = appliedDelta != 0 && ++g_cameraAppliedCount % 60 == 1;
+    const bool logMotion = appliedDelta != 0 &&
+        g_cameraAppliedCount.fetch_add(1) % 60 == 0;
     if (logCall || logMotion)
     {
-        Log("[GAME] camera lookX call=%u base=%d mouse=%.2f applied=%d",
+        Log("[GAME-MOUSE] camera lookX call=%u base=%d mouse=%.2f applied=%d",
             lookCallCount, static_cast<int>(current), delta, result);
     }
     return static_cast<int16_t>(result);
@@ -343,10 +346,11 @@ int16_t PcInputApplyMouseLookY(int16_t current)
     const int result = std::clamp(static_cast<int>(current) + appliedDelta, -32768, 32767);
     static uint32_t lookCallCount = 0;
     const bool logCall = ++lookCallCount % 120 == 1;
-    const bool logMotion = appliedDelta != 0 && ++g_cameraAppliedCount % 60 == 1;
+    const bool logMotion = appliedDelta != 0 &&
+        g_cameraAppliedCount.fetch_add(1) % 60 == 0;
     if (logCall || logMotion)
     {
-        Log("[GAME] camera lookY call=%u base=%d mouse=%.2f applied=%d",
+        Log("[GAME-MOUSE] camera lookY call=%u base=%d mouse=%.2f applied=%d",
             lookCallCount, static_cast<int>(current), delta, result);
     }
     return static_cast<int16_t>(result);
@@ -487,15 +491,22 @@ extern "C"
     {
         static uint32_t mouseEventCount = 0;
         if ((dx != 0.0f || dy != 0.0f) && ++mouseEventCount % 60 == 1)
-            Log("[JNI] mouseMove delta=(%.2f,%.2f)", dx, dy);
+            Log("[JNI-MOUSE] delta=(%.2f,%.2f)", dx, dy);
         PcInputAddMouseDelta(dx, dy);
+    }
+
+    JNIEXPORT jint JNICALL
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeGetMouseFrameCount(
+        JNIEnv*, jclass)
+    {
+        return static_cast<jint>(g_mouseAppliedCount.load());
     }
 
     JNIEXPORT void JNICALL
     Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseButtonDown(
         JNIEnv*, jclass, jint button, jint action)
     {
-        Log("[JNI] mouseButtonDown button=%d action=%d", button, action);
+        Log("[JNI-MOUSE] buttonDown button=%d action=%d", button, action);
         PcInputSetMouseButton(button, action, true);
     }
 
@@ -503,20 +514,20 @@ extern "C"
     Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseButtonUp(
         JNIEnv*, jclass, jint button)
     {
-        Log("[JNI] mouseButtonUp button=%d", button);
+        Log("[JNI-MOUSE] buttonUp button=%d", button);
         PcInputSetMouseButton(button, -1, false);
     }
 
     JNIEXPORT void JNICALL
     Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseEnter(JNIEnv*, jclass)
     {
-        Log("[JNI] mouseEnter");
+        Log("[JNI-MOUSE] enter");
     }
 
     JNIEXPORT void JNICALL
     Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseLeave(JNIEnv*, jclass)
     {
-        Log("[JNI] mouseLeave");
+        Log("[JNI-MOUSE] leave");
         PcInputMouseLeave();
     }
 

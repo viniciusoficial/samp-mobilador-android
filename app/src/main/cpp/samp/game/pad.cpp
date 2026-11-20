@@ -988,13 +988,6 @@ uint32_t CPed__GetWeaponSkill_hook(CPedGTA *ped)
     return result;
 }
 
-void (*CPad__UpdateMouse)(uintptr_t thiz);
-void CPad__UpdateMouse_hook(uintptr_t thiz)
-{
-    CPad__UpdateMouse(thiz);
-    PcInputApplyMouse();
-}
-
 int16_t (*CPad__LookAroundLeftRight)(uintptr_t thiz);
 int16_t CPad__LookAroundLeftRight_hook(uintptr_t thiz)
 {
@@ -1027,7 +1020,6 @@ void HookCPad()
 
     CHook::InstallPLT(g_libGTASA + 0x826A88, &TaskUseGun);
     CHook::InstallPLT(g_libGTASA + 0x82F5C0, &CPad__TaskProcess);
-    CHook::InlineHook("_ZN4CPad11UpdateMouseEv", &CPad__UpdateMouse_hook, &CPad__UpdateMouse);
     CHook::InlineHook("_ZN4CPad19LookAroundLeftRightEv",
                       &CPad__LookAroundLeftRight_hook, &CPad__LookAroundLeftRight);
     CHook::InlineHook("_ZN4CPad16LookAroundUpDownEv",

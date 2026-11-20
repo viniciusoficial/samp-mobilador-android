@@ -72,6 +72,8 @@ public class InputHandler implements GameViewHandler {
     private boolean mouseTouchActive;
     private boolean closeNativeInterfaceOnNextInput;
     private int mouseLogCounter;
+    private int touchLogCounter;
+    private int mouseEventCount;
 
     private InputHandler() {}
 
@@ -271,7 +273,7 @@ public class InputHandler implements GameViewHandler {
             return false;
         }
         synchronizeNativeInterfaceState();
-        if ((event.getSource() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) {
+        if (isMouseSource(event.getSource())) {
             return onMouseMotionEvent(event, false);
         }
         if ((event.getSource() & 16) == 0) {
@@ -328,12 +330,21 @@ public class InputHandler implements GameViewHandler {
     public final boolean onTouchEvent(MotionEvent event) {
         Intrinsics.checkNotNullParameter(event, "event");
         synchronizeNativeInterfaceState();
-        if ((event.getSource() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) {
+        if (isMouseSource(event.getSource())) {
             return onMouseMotionEvent(event, false);
         }
         if (KeyboardMouseSettings.isEnabled() && !interfaceVisible) {
+            if (touchLogCounter++ % 60 == 0) {
+                Log.d(TAG, "[TOUCH-MOUSE] blocked reason=PC gameplay mode");
+            }
             releaseTouchPointers();
             return true;
+        }
+        if ((event.getActionMasked() == MotionEvent.ACTION_DOWN ||
+                event.getActionMasked() == MotionEvent.ACTION_MOVE) &&
+                touchLogCounter++ % 60 == 0) {
+            Log.d(TAG, "[TOUCH-MOUSE] accepted reason=" +
+                    (interfaceVisible ? "interface visible" : "PC mode disabled"));
         }
         int actionIndex = event.getActionIndex();
         int pointerId = event.getPointerId(actionIndex);
@@ -429,7 +440,7 @@ public class InputHandler implements GameViewHandler {
         hasLastMousePosition = false;
         if (gameView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             gameView.setPointerIcon(PointerIcon.getSystemIcon(gameView.getContext(),
-                    captured ? PointerIcon.TYPE_NULL : PointerIcon.TYPE_ARROW));
+                    shouldHideCursor() ? PointerIcon.TYPE_NULL : PointerIcon.TYPE_ARROW));
         }
         if (!captured) {
             releaseMouseButtons();
@@ -441,7 +452,7 @@ public class InputHandler implements GameViewHandler {
 
     public boolean onCapturedPointerEvent(MotionEvent event) {
         if (event == null ||
-                (event.getSource() & InputDevice.SOURCE_MOUSE) != InputDevice.SOURCE_MOUSE) {
+                !isMouseSource(event.getSource())) {
             return false;
         }
         synchronizeNativeInterfaceState();
@@ -550,8 +561,11 @@ public class InputHandler implements GameViewHandler {
                 KeyboardMouseSettings.isEnabled() && !interfaceVisible) {
             float dx;
             float dy;
-            if (capturedEvent && action == MotionEvent.ACTION_MOVE &&
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            boolean hasRelativeSource = (source & InputDevice.SOURCE_MOUSE_RELATIVE) ==
+                    InputDevice.SOURCE_MOUSE_RELATIVE;
+            if ((capturedEvent || hasRelativeSource) &&
+                    (action == MotionEvent.ACTION_MOVE ||
+                            action == MotionEvent.ACTION_HOVER_MOVE)) {
                 dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
                 dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
             } else {
@@ -662,15 +676,27 @@ public class InputHandler implements GameViewHandler {
             MotionEvent event, int source, int deviceSources, float x, float y,
             float dx, float dy, boolean capturedEvent) {
         int action = event.getActionMasked();
+        mouseEventCount++;
+        boolean leftPressed = (pressedMouseButtons & MotionEvent.BUTTON_PRIMARY) != 0;
+        boolean rightPressed = (pressedMouseButtons & MotionEvent.BUTTON_SECONDARY) != 0;
+        KeyboardMouseSettings.updateMouseDiagnostics(
+                "Detected: yes | source=0x" + Integer.toHexString(source) +
+                        " deviceId=" + event.getDeviceId() +
+                        " | delta=(" + dx + "," + dy + ")" +
+                        " | events=" + mouseEventCount +
+                        " | capture=" + pointerCaptured +
+                        " | buttons L=" + leftPressed + " R=" + rightPressed +
+                        " | frames consumed=" +
+                        KeyboardMouseBridge.nativeGetMouseFrameCount());
         boolean importantEvent = isMouseButtonAction(action) ||
                 action == MotionEvent.ACTION_CANCEL ||
                 action == MotionEvent.ACTION_HOVER_ENTER ||
                 action == MotionEvent.ACTION_HOVER_EXIT;
         if (importantEvent || ++mouseLogCounter % 60 == 1) {
-            Log.d(TAG, "[Java] source=0x" + Integer.toHexString(source) +
+            Log.d(TAG, "[JAVA-MOUSE] action=" + action +
+                    " source=0x" + Integer.toHexString(source) +
                     " deviceSources=0x" + Integer.toHexString(deviceSources) +
                     " deviceId=" + event.getDeviceId() +
-                    " action=" + action +
                     " x=" + x + " y=" + y +
                     " deltaX=" + dx + " deltaY=" + dy +
                     " captured=" + capturedEvent +
@@ -700,23 +726,40 @@ public class InputHandler implements GameViewHandler {
     }
 
     private void updatePointerCapture() {
-        if (gameView == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        if (gameView == null) {
             return;
         }
         gameView.post(() -> {
-            boolean shouldCapture = KeyboardMouseSettings.isEnabled() && !interfaceVisible &&
-                    !KeyboardMouseBridge.nativeIsInterfaceActive() && gameView.hasWindowFocus();
-            if (shouldCapture && !pointerCaptured) {
-                gameView.requestPointerCapture();
-            } else if (!shouldCapture && pointerCaptured) {
-                gameView.releasePointerCapture();
+            boolean shouldCapture = shouldCapturePointer();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (shouldCapture && !pointerCaptured) {
+                    gameView.requestPointerCapture();
+                } else if (!shouldCapture && pointerCaptured) {
+                    gameView.releasePointerCapture();
+                }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 gameView.setPointerIcon(PointerIcon.getSystemIcon(gameView.getContext(),
-                        pointerCaptured ? PointerIcon.TYPE_NULL : PointerIcon.TYPE_ARROW));
+                        shouldCapture ? PointerIcon.TYPE_NULL : PointerIcon.TYPE_ARROW));
             }
             hasLastMousePosition = false;
         });
+    }
+
+    private boolean shouldCapturePointer() {
+        return KeyboardMouseSettings.isEnabled() && !interfaceVisible &&
+                !KeyboardMouseBridge.nativeIsInterfaceActive() && gameView.hasWindowFocus();
+    }
+
+    private boolean shouldHideCursor() {
+        return KeyboardMouseSettings.isEnabled() && !interfaceVisible &&
+                !KeyboardMouseBridge.nativeIsInterfaceActive();
+    }
+
+    public static boolean isMouseSource(int source) {
+        return (source & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE ||
+                (source & InputDevice.SOURCE_MOUSE_RELATIVE) ==
+                        InputDevice.SOURCE_MOUSE_RELATIVE;
     }
 
     private void synchronizeNativeInterfaceState() {

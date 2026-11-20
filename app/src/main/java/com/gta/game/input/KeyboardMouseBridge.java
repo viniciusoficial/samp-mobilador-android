@@ -16,6 +16,7 @@ public final class KeyboardMouseBridge {
     public static native void nativeSetAction(int action, boolean pressed);
     public static native void nativeSetMouseOptions(float maxDelta, float smoothing);
     public static native void nativeMouseMove(float dx, float dy);
+    public static native int nativeGetMouseFrameCount();
     public static native void nativeMouseButtonDown(int button, int action);
     public static native void nativeMouseButtonUp(int button);
     public static native void nativeMouseEnter();
