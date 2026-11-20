@@ -13,7 +13,7 @@ public:
 private:
 	struct Letter
 	{
-		char win1251;
+		unsigned char win1251;
 		int unicode;
 	};
 

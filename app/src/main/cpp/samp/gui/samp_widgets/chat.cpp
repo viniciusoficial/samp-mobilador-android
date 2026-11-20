@@ -102,6 +102,13 @@ void Chat::touchPopEvent()
 
 void Chat::keyboardEvent(const std::string& input)
 {
+    if (input == "/mob")
+    {
+        if (pJavaWrapper)
+            pJavaWrapper->ShowKeyboardMouseSettings();
+        return;
+    }
+
     if (input.length() > 0 && pNetGame)
     {
         if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());

@@ -9,6 +9,7 @@ public:
 
 	void setButton1Caption(const std::string& caption);
 	void setButton2Caption(const std::string& caption);
+	void confirm();
 
 	virtual void performLayout() override;
 
@@ -54,6 +55,7 @@ public:
 
 	void show(int16_t wDialogID, DialogStyle dialog_style, const std::string& title, const std::string& message, const std::string& button1, const std::string& button2);
 	void hide();
+	void confirm();
 
 	virtual void performLayout() override;
 	virtual void draw(ImGuiRenderer* renderer) override;

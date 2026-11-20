@@ -1,145 +1,50 @@
-# SA-MP 2.11 (Android)
+# SA-MP Mobilador para Android
 
-Modern **SA-MP 2.11** client for **Grand Theft Auto: San Andreas (Android)**.
+Cliente Android de SA-MP para GTA: San Andreas, com suporte a teclado e mouse. O objetivo é aproximar a experiência de jogar no PC em um dispositivo Android, mantendo também os controles por toque.
 
-> Main author's:
-[**Egor Kuzn**](https://github.com/bkuzn2) && [**Vadim**](https://github.com/kuzia15)
+> **Status:** em desenvolvimento. A compatibilidade e o desempenho dependem do dispositivo, da versão do Android e do servidor.
 
-> **Status:** Active Development 🚧
+## Recursos
 
-## Features
+- Cliente Android para dispositivos **ARM64**.
+- Suporte a teclado e mouse, com teclas, botões e sensibilidades configuráveis.
+- Movimento do mouse para controlar a câmera; por padrão, o botão esquerdo dispara e o direito mira.
+- Menu de configuração acessível pelo comando `/mob` no chat.
+- Controles touch preservados.
+- Suporte a páginas de memória de 16 KB.
 
-* ✅ Android **ARM64** only
-* ✅ **16 KB page size** support
-* ✅ Fixed pickup synchronization
-* ✅ Fixed jetpack synchronization
-* ✅ Cache location moved to:
+O projeto busca oferecer uma experiência próxima à do PC, mas nem todos os recursos ou comportamentos são necessariamente idênticos. Não há garantia de uma taxa de quadros específica: FPS varia conforme o aparelho, a temperatura, a tela e a situação do jogo.
 
-  ```text
-  /storage/emulated/0/GTA/
-  ```
-* ✅ Optimized for modern Android devices
+## Requisitos
 
----
+- Android 9 ou superior.
+- Dispositivo ARM64.
+- Uma instalação legítima de GTA: San Andreas compatível com o cliente. Os arquivos do jogo não são distribuídos neste repositório.
 
-## Requirements
+## Instalação
 
-* Android 8.0+
-* ARM64 device
+Para testar esta versão, baixe o [APK Debug assinado](./GTA-2.11-debug.apk) incluído na raiz do repositório e siga as instruções do launcher para configurar os dados do jogo. Esse APK usa assinatura de desenvolvimento e não deve ser tratado como uma publicação de produção.
 
----
+Use somente arquivos de jogo obtidos por meios oficiais e não redistribua esses arquivos.
 
-## Installation
+## Compilação
 
-1. Install the APK.
-2. Download the game cache:
-
-   ```
-   https://drive.google.com/file/d/1KmC1dNHkwTZ_mWT9PC8JuGSi1IXb2CZa/view?usp=drivesdk
-   ```
-3. Extract the cache to:
-
-   ```text
-   /storage/emulated/0/GTA/
-   ```
-4. Launch the game.
-
----
-
-## Building
-
-Clone the repository:
+Configure o Android SDK e o NDK 26.2.11394342, depois execute na raiz do repositório:
 
 ```bash
-git clone https://github.com/kuzia15/SAMP-Mobile.git
+bash ./gradlew :app:assembleDebug
 ```
 
-Open the project in Android Studio and build using the default Gradle configuration.
+O APK de debug é gerado em:
 
----
-
-## Project Status
-
-This project is under active development. New fixes and improvements are added regularly.
-
----
-
-## License
-
-This project is provided for educational and research purposes only.
-
-Grand Theft Auto, San Andreas and SA-MP are trademarks of their respective owners and are not affiliated with this project.
-
----
-
-# SA-MP 2.11 (Android)
-
-Современный клиент **SA-MP 2.11** для **Grand Theft Auto: San Andreas (Android)**.
-
-> Основные авторы:
-[**Egor Kuzn**](https://github.com/bkuzn2) && [**Vadim**](https://github.com/kuzia15)
-
-> **Статус:** Активная разработка 🚧
-
-## Возможности
-
-* ✅ Только **ARM64** на Android
-* ✅ Поддержка **размера страниц 16 КБ**
-* ✅ Исправлена синхронизация пикапов
-* ✅ Исправлена синхронизация джетпака
-* ✅ Путь кэша перенесён в:
-
-  ```text
-  /storage/emulated/0/GTA/
-  ```
-* ✅ Оптимизировано для современных Android-устройств
-
----
-
-## Требования
-
-* Android 8.0+
-* Устройство с ARM64
-
----
-
-## Установка
-
-1. Установите APK.
-2. Скачайте игровой кэш:
-
-   ```
-   https://drive.google.com/file/d/1KmC1dNHkwTZ_mWT9PC8JuGSi1IXb2CZa/view?usp=drivesdk
-   ```
-3. Распакуйте кэш в:
-
-   ```text
-   /storage/emulated/0/GTA/
-   ```
-4. Запустите игру.
-
----
-
-## Сборка
-
-Клонируйте репозиторий:
-
-```bash
-git clone https://github.com/kuzia15/SAMP-Mobile.git
+```text
+app/build/outputs/apk/debug/GTA-2.11-debug.apk
 ```
 
-Откройте проект в Android Studio и соберите его, используя стандартную конфигурацию Gradle.
+O arquivo [GTA-2.11-debug.apk](./GTA-2.11-debug.apk) na raiz é uma cópia assinada dessa build para instalação e testes. O APK de release gerado pelo Gradle não é assinado neste projeto; uma publicação exige assinatura apropriada.
 
----
+## Créditos e marcas
 
-## Статус проекта
+Este projeto deriva de trabalho anterior de [Egor Kuzn](https://github.com/bkuzn2) e [Vadim](https://github.com/kuzia15). Consulte os avisos de autoria e licença presentes no código-fonte.
 
-Проект находится в активной разработке. Новые исправления и улучшения добавляются регулярно.
-
----
-
-## Лицензия
-
-Проект предоставлен исключительно в образовательных и исследовательских целях.
-
-Grand Theft Auto, San Andreas и SA-MP являются товарными знаками соответствующих правообладателей и не связаны с этим проектом.
+Grand Theft Auto, San Andreas e SA-MP são marcas de seus respectivos proprietários. Este projeto não é afiliado nem endossado por eles.

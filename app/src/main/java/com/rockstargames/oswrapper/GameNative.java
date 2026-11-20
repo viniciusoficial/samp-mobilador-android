@@ -128,4 +128,9 @@ public class GameNative {
 
      
     public static   native void implOnTouchStart(int pointerId, float x, float y);
+
+    // Protocolo relativo exclusivo do mouse físico, separado da rota de touch.
+    public static native void implOnNativeMouseMove(float dx, float dy);
+    public static native void implOnNativeMouseButton(int button, boolean pressed);
+    public static native void implOnCaptureStatusChanged(boolean captured);
 }

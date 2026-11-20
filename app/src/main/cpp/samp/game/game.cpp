@@ -14,7 +14,7 @@
 #include "game/Models/ModelInfo.h"
 #include "game/Collision/Collision.h"
 #include "World.h"
-
+#include "native_camera_mouse.h"
 void ApplySAMPPatchesInGame();
 void InitScripting();
 
@@ -863,7 +863,6 @@ void CGame::Process() {
     uint32_t v2; // r5
     uint32_t v3; // r5
 
-    //FIXME
     ((void(*)())(g_libGTASA + 0x49B728))(); // CPad::UpdatePads()
     ((void(*)())(g_libGTASA + 0x500D34))(); // CTouchInterface::Clear()
     ((void(*)())(g_libGTASA + 0x72D330))(); // CHID::Update()
@@ -958,6 +957,10 @@ void CGame::Process() {
 
         // CInterestingEvents::ScanForNearbyEntities
 
+        // A CCam consome Alpha/Beta dentro de CCamera::Process(). O delta
+        // próprio precisa entrar antes dessa chamada; aplicar depois deixa a
+        // matriz já construída e não altera a imagem nesta build.
+        NativeCameraMouseApply(TheCamera);
         ((void (*)(CCamera*)) (g_libGTASA + 0x470E98))(&TheCamera); // CCamera::Process()
 
         // CCullZones::Update() менты не могут найти?

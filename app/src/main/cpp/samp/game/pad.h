@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 enum ePadKeys
 {
     // KEY_ 						OnFoot 				InCar
@@ -25,6 +27,30 @@ enum ePadKeys
     KEY_CTRL_BACK, 			// H 			|   H 					|	262144
 };
 
+enum class PcInputAction
+{
+    MOVE_FORWARD,
+    MOVE_BACKWARD,
+    MOVE_LEFT,
+    MOVE_RIGHT,
+    SPRINT,
+    JUMP,
+    CROUCH,
+    FIRE,
+    AIM,
+    VEHICLE,
+    CONTROL_BACK,
+    YES,
+    NO,
+    WALK,
+    TAB,
+    ENTER,
+    CHAT,
+    WEAPON_NEXT,
+    WEAPON_PREVIOUS,
+    COUNT
+};
+
 typedef struct
 {
     uint16_t wKeyLR;
@@ -37,5 +63,26 @@ VALIDATE_SIZE(PAD_KEYS, 24);
 
 extern PAD_KEYS LocalPlayerKeys;
 extern PAD_KEYS RemotePlayerKeys[PLAYER_PED_SLOTS];
+
+void PcInputSetEnabled(bool enabled);
+bool PcInputIsEnabledForTouch();
+void PcInputSetAction(int action, bool pressed);
+bool PcInputIsPressed(PcInputAction action);
+bool PcInputConsumePress(PcInputAction action);
+bool PcInputConsumeDriverVehicleEntry();
+int PcInputConsumeWeaponWheel(int direction);
+void PcInputAddMouseDelta(float dx, float dy);
+void PcInputApplyMouse();
+void PcInputSetMouseOptions(float maxDelta, float smoothing);
+void PcInputSetMouseButton(int button, int action, bool pressed);
+void PcInputMouseLeave();
+int16_t PcInputApplyMouseLookX(int16_t current);
+int16_t PcInputApplyMouseLookY(int16_t current);
+void PcInputOpenChat();
+void PcInputHandleTextKey(int key, int unicode);
+void PcInputHandleEscape();
+bool PcInputIsTextEntryActive();
+bool PcInputIsNativeInterfaceActive();
+void PcInputRefreshNativeInterfaceState();
 
 void HookCPad();

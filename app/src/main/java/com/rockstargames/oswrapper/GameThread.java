@@ -7,6 +7,8 @@ import android.util.Log;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 
+import com.gta.game.input.KeyboardMouseBridge;
+
 import java.lang.ref.WeakReference;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -617,6 +619,48 @@ public final class GameThread {
             }
         });
 
+    }
+
+    public void onPcInputEnabled(final boolean enabled) {
+        queueEvent(() -> {
+            KeyboardMouseBridge.nativeSetEnabled(enabled);
+            return Unit.INSTANCE;
+        });
+    }
+
+    public void onPcInputAction(final int action, final boolean pressed) {
+        queueEvent(() -> {
+            KeyboardMouseBridge.nativeSetAction(action, pressed);
+            return Unit.INSTANCE;
+        });
+    }
+
+    public void onPcMouseWheel(final int direction) {
+        queueEvent(() -> {
+            KeyboardMouseBridge.nativeMouseWheel(direction);
+            return Unit.INSTANCE;
+        });
+    }
+
+    public void onPcOpenChat() {
+        queueEvent(() -> {
+            KeyboardMouseBridge.nativeOpenChat();
+            return Unit.INSTANCE;
+        });
+    }
+
+    public void onPcTextInputKey(final int key, final int unicode) {
+        queueEvent(() -> {
+            KeyboardMouseBridge.nativeTextInputKey(key, unicode);
+            return Unit.INSTANCE;
+        });
+    }
+
+    public void onPcEscape() {
+        queueEvent(() -> {
+            KeyboardMouseBridge.nativeHandleEscape();
+            return Unit.INSTANCE;
+        });
     }
 
     public void onGamepadAxesChanged(final int controllerId, final float x, final float y,

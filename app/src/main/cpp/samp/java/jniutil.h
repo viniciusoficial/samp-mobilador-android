@@ -33,6 +33,7 @@ public:
 	}
 
     void ShowDialog(int dialogStyle, int dialogID, char* title, char* text, char* button1, char* button2);
+    void ShowKeyboardMouseSettings();
 
 	void ShowEditObject();
 	void HideEditObject();
@@ -42,6 +43,7 @@ public:
     jmethodID s_showLoadingScreen;
     jmethodID s_hideLoadingScreen;
     jmethodID s_ShowDialog;
+    jmethodID s_showKeyboardMouseSettings;
     jmethodID s_showInputLayout;
     jmethodID s_hideInputLayout;
 	jmethodID s_exitGame;

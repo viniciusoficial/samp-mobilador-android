@@ -124,6 +124,7 @@ void Keyboard::show(Widget* caller)
     this->setVisible(true);
     pGame->EnableGameInput(false);
     m_caller = caller;
+    PcInputRefreshNativeInterfaceState();
 }
 
 void Keyboard::hide()
@@ -131,6 +132,7 @@ void Keyboard::hide()
     this->setVisible(false);
     pGame->EnableGameInput(true);
     m_caller = nullptr;
+    PcInputRefreshNativeInterfaceState();
 }
 
 void Keyboard::send()
@@ -197,6 +199,12 @@ void KeyboardInput::performLayout()
 }
 
 void KeyboardInput::addCharToInput(char value)
+{
+    m_input += value;
+    m_caption = Encoding::cp2utf(m_input);
+}
+
+void KeyboardInput::addTextToInput(const std::string& value)
 {
     m_input += value;
     m_caption = Encoding::cp2utf(m_input);

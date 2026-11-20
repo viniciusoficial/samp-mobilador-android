@@ -1,5 +1,6 @@
 ﻿#include "../main.h"
 #include "../game/game.h"
+#include "../game/pad.h"
 #include "netgame.h"
 #include "localplayer.h"
 #include "../gui/gui.h"
@@ -367,7 +368,9 @@ bool CLocalPlayer::Process()
 
 			//GTA_CONTROLSET *controls = GameGetInternalKeys();
 
-			if(!m_bPassengerDriveByMode && LocalPlayerKeys.bKeys[KEY_CTRL_BACK]) {
+			if(!m_bPassengerDriveByMode &&
+			   (LocalPlayerKeys.bKeys[KEY_CTRL_BACK] ||
+				PcInputIsPressed(PcInputAction::CONTROL_BACK))) {
 				// NOT IN DRIVEBY MODE AND HORN HELD
 				if(m_pPlayerPed->GetCurrentWeapon() == WEAPON_MICRO_UZI || m_pPlayerPed->GetCurrentWeapon() == WEAPON_MP5 || m_pPlayerPed->GetCurrentWeapon() == WEAPON_TEC9) {
 					if(m_pPlayerPed->StartPassengerDriveByMode()) {
@@ -1103,6 +1106,12 @@ bool CLocalPlayer::HandlePassengerEntry()
 	//if (!isHeldDown) return false;
 
 	if (!bNeedEnterVehicle) return false;
+	if (PcInputConsumeDriverVehicleEntry() && EnterVehicleAsDriver())
+	{
+		bNeedEnterVehicle = false;
+		return true;
+	}
+
 	VEHICLEID ClosetVehicleID = pVehiclePool->FindNearestToLocalPlayerPed();
 	CVehicle* pVehicle = pVehiclePool->GetAt(ClosetVehicleID);
 	if (!pVehicle) return false;

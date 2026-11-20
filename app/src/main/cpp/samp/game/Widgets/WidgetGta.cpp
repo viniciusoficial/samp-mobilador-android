@@ -10,6 +10,7 @@
 #include "WidgetRegionLook.h"
 #include "TouchInterface.h"
 #include "WidgetButton.h"
+#include "../pad.h"
 
 #include "../../gui/gui.h"
 extern UI* pUI;
@@ -250,6 +251,9 @@ eWidgetState ProcessFixedWidgetFromId(int iWidgetId)
 int (*CTouchInterface__IsTouched)(int iWidgetId, CVector2D *pVecOut, int nFrameCount);
 int CTouchInterface__IsTouched_hook(int iWidgetId, CVector2D *pVecOut, int nFrameCount)
 {
+    if (PcInputIsEnabledForTouch())
+        return 0;
+
     if(iWidgetId == WIDGET_CAM_TOGGLE) {
         return CTouchInterface__IsTouched(iWidgetId, pVecOut, nFrameCount);
     }

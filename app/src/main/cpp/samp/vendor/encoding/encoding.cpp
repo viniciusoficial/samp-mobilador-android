@@ -1,5 +1,9 @@
 #include "encoding.h"
 
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
 constexpr Encoding::Letter Encoding::m_letters[];
 
 std::string Encoding::cp2utf(const std::string& s)
@@ -10,7 +14,7 @@ std::string Encoding::cp2utf(const std::string& s)
     for (i = 0; i < len; i++)
     {
         c = s[i];
-        char buf[4];
+        char buf[4]{};
         char in[2] = { 0, 0 };
         *in = c;
         convert_windows1251_to_utf8(buf, in, strlen(in));
@@ -21,61 +25,102 @@ std::string Encoding::cp2utf(const std::string& s)
 
 std::string Encoding::utf2cp(const std::string& s)
 {
-    size_t len = s.size();
-    const char* buff = s.c_str();
-    char* output = new char[len];
-    convert_utf8_to_windows1251(buff, output, len);
-    std::string ns(output);
-    return ns;
+    std::vector<char> output(s.size() + 1, '\0');
+    if (!convert_utf8_to_windows1251(s.c_str(), output.data(), s.size()))
+        return {};
+    return std::string(output.data());
 }
 
 bool Encoding::convert_utf8_to_windows1251(const char* utf8, char* windows1251, size_t n)
 {
-    int i = 0;
-    int j = 0;
-    for (; i < (int)n && utf8[i] != 0; ++i) {
-        char prefix = utf8[i];
-        char suffix = utf8[i + 1];
-        if ((prefix & 0x80) == 0) {
-            windows1251[j] = (char)prefix;
-            ++j;
+    size_t i = 0;
+    size_t j = 0;
+    while (i < n)
+    {
+        const auto first = static_cast<unsigned char>(utf8[i]);
+        uint32_t codePoint = 0;
+        size_t sequenceLength = 0;
+        if (first <= 0x7F)
+        {
+            codePoint = first;
+            sequenceLength = 1;
         }
-        else if ((~prefix) & 0x20) {
-            int first5bit = prefix & 0x1F;
-            first5bit <<= 6;
-            int sec6bit = suffix & 0x3F;
-            int unicode_char = first5bit + sec6bit;
-
-            if (unicode_char >= 0x410 && unicode_char <= 0x44F) {
-                windows1251[j] = (char)(unicode_char - 0x350);
-            }
-            else if (unicode_char >= 0x80 && unicode_char <= 0xFF) {
-                windows1251[j] = (char)(unicode_char);
-            }
-            else if (unicode_char >= 0x402 && unicode_char <= 0x403) {
-                windows1251[j] = (char)(unicode_char - 0x382);
-            }
-            else {
-                int count = sizeof(m_letters) / sizeof(Letter);
-                for (int k = 0; k < count; ++k) {
-                    if (unicode_char == m_letters[k].unicode) {
-                        windows1251[j] = m_letters[k].win1251;
-                        goto NEXT_LETTER;
-                    }
-                }
-                // can't convert this char
-                return false;
-            }
-            NEXT_LETTER:
-            ++i;
-            ++j;
+        else if (first >= 0xC2 && first <= 0xDF)
+        {
+            codePoint = first & 0x1F;
+            sequenceLength = 2;
         }
-        else {
-            // can't convert this chars
+        else if (first >= 0xE0 && first <= 0xEF)
+        {
+            codePoint = first & 0x0F;
+            sequenceLength = 3;
+        }
+        else if (first >= 0xF0 && first <= 0xF4)
+        {
+            codePoint = first & 0x07;
+            sequenceLength = 4;
+        }
+        else
+        {
             return false;
         }
+
+        if (i + sequenceLength > n)
+            return false;
+
+        for (size_t jByte = 1; jByte < sequenceLength; ++jByte)
+        {
+            const auto next = static_cast<unsigned char>(utf8[i + jByte]);
+            if ((next & 0xC0) != 0x80)
+                return false;
+            codePoint = (codePoint << 6) | (next & 0x3F);
+        }
+
+        if ((sequenceLength == 2 && codePoint < 0x80) ||
+            (sequenceLength == 3 && codePoint < 0x800) ||
+            (sequenceLength == 4 && codePoint < 0x10000) ||
+            codePoint > 0x10FFFF ||
+            (codePoint >= 0xD800 && codePoint <= 0xDFFF))
+        {
+            return false;
+        }
+
+        if (codePoint <= 0x7F)
+        {
+            windows1251[j++] = static_cast<char>(codePoint);
+        }
+        else if (codePoint >= 0x0410 && codePoint <= 0x044F)
+        {
+            windows1251[j++] = static_cast<char>(codePoint - 0x0350);
+        }
+        else if (codePoint >= 0x80 && codePoint <= 0xFF)
+        {
+            windows1251[j++] = static_cast<char>(codePoint);
+        }
+        else if (codePoint >= 0x0402 && codePoint <= 0x0403)
+        {
+            windows1251[j++] = static_cast<char>(codePoint - 0x0382);
+        }
+        else
+        {
+            bool converted = false;
+            for (const Letter& letter : m_letters)
+            {
+                if (codePoint == static_cast<uint32_t>(letter.unicode))
+                {
+                    windows1251[j++] = static_cast<char>(letter.win1251);
+                    converted = true;
+                    break;
+                }
+            }
+            if (!converted)
+                return false;
+        }
+
+        i += sequenceLength;
     }
-    windows1251[j] = 0;
+
+    windows1251[j] = '\0';
     return true;
 }
 
