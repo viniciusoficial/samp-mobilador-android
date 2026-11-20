@@ -2,6 +2,7 @@
 #include "game.h"
 #include "pad.h"
 #include "../gui/gui.h"
+#include "../net/netgame.h"
 #include "../java/jniutil.h"
 #include "../vendor/encoding/encoding.h"
 
@@ -403,6 +404,19 @@ void PcInputHandleEscape()
     if (pUI->keyboard()->visible())
     {
         pUI->keyboard()->hide();
+        return;
+    }
+    if (pUI->dialog()->visible())
+    {
+        Dialog* dialog = pUI->dialog();
+        if (pNetGame != nullptr)
+        {
+            pNetGame->SendDialogResponse(
+                dialog->dialogID(), 0, dialog->content()->listItem(),
+                dialog->content()->inputString().c_str());
+        }
+        dialog->hide();
+        Log("PC input: cancelled native dialog with Escape");
         return;
     }
     if (pUI->playertablist()->visible())
