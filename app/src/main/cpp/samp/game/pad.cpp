@@ -987,6 +987,14 @@ uint32_t CPed__GetWeaponSkill_hook(CPedGTA *ped)
     }
     return result;
 }
+
+void (*CPad__UpdateMouse)(uintptr_t thiz);
+void CPad__UpdateMouse_hook(uintptr_t thiz)
+{
+    CPad__UpdateMouse(thiz);
+    PcInputApplyMouse();
+}
+
 void HookCPad()
 {
     memset(&LocalPlayerKeys, 0, sizeof(PAD_KEYS));
@@ -1007,6 +1015,7 @@ void HookCPad()
 
     CHook::InstallPLT(g_libGTASA + 0x826A88, &TaskUseGun);
     CHook::InstallPLT(g_libGTASA + 0x82F5C0, &CPad__TaskProcess);
+    CHook::InlineHook("_ZN4CPad11UpdateMouseEv", &CPad__UpdateMouse_hook, &CPad__UpdateMouse);
 
     // lr/ud (onfoot)
     CHook::InlineHook("_ZN4CPad19GetPedWalkLeftRightEv", &CPad__GetPedWalkLeftRight_hook, &CPad__GetPedWalkLeftRight);

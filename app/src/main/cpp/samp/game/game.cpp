@@ -867,7 +867,6 @@ void CGame::Process() {
     ((void(*)())(g_libGTASA + 0x49B728))(); // CPad::UpdatePads()
     ((void(*)())(g_libGTASA + 0x500D34))(); // CTouchInterface::Clear()
     ((void(*)())(g_libGTASA + 0x72D330))(); // CHID::Update()
-    PcInputApplyMouse();
 
 //	CLoadMonitor::BeginFrame(&g_LoadMonitor);
     CurrentTimeInCycles = CTimer::GetCurrentTimeInCycles();
