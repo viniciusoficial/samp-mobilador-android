@@ -32,6 +32,10 @@ uint16_t CPad__GetPedWalkLeftRight_hook(uintptr_t thiz)
     {
         // Local player
         LocalPlayerKeys.wKeyLR = CPad__GetPedWalkLeftRight(thiz);
+        if (PcInputIsPressed(PcInputAction::MOVE_LEFT))
+            LocalPlayerKeys.wKeyLR = 0xFF80;
+        else if (PcInputIsPressed(PcInputAction::MOVE_RIGHT))
+            LocalPlayerKeys.wKeyLR = 0x80;
         return LocalPlayerKeys.wKeyLR;
     }
 }
@@ -54,6 +58,10 @@ uint16_t CPad__GetPedWalkUpDown_hook(uintptr_t thiz)
     {
         // Local player
         LocalPlayerKeys.wKeyUD = CPad__GetPedWalkUpDown(thiz);
+        if (PcInputIsPressed(PcInputAction::MOVE_FORWARD))
+            LocalPlayerKeys.wKeyUD = 0xFF80;
+        else if (PcInputIsPressed(PcInputAction::MOVE_BACKWARD))
+            LocalPlayerKeys.wKeyUD = 0x80;
         return LocalPlayerKeys.wKeyUD;
     }
 }
@@ -67,7 +75,8 @@ uint32_t CPad__GetSprint_hook(uintptr_t thiz, uint32_t unk)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = CPad__GetSprint(thiz, unk);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] =
+            CPad__GetSprint(thiz, unk) || PcInputIsPressed(PcInputAction::SPRINT);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT];
     }
 }
@@ -89,8 +98,10 @@ uint32_t CPad__JumpJustDown_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad__JumpJustDown(thiz);
-        return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
+        const bool nativePressed = CPad__JumpJustDown(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] =
+            nativePressed || PcInputIsPressed(PcInputAction::JUMP);
+        return nativePressed || PcInputConsumePress(PcInputAction::JUMP);
     }
 }
 
@@ -104,7 +115,8 @@ uint32_t CPad__GetJump_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad__JumpJustDown(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] =
+            CPad__JumpJustDown(thiz) || PcInputIsPressed(PcInputAction::JUMP);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
     }
 }
@@ -118,7 +130,8 @@ uint32_t CPad__GetAutoClimb_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad__GetAutoClimb(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] =
+            CPad__GetAutoClimb(thiz) || PcInputIsPressed(PcInputAction::JUMP);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
     }
 }
@@ -132,7 +145,8 @@ uint32_t CPad__GetAbortClimb_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = CPad__GetAutoClimb(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] =
+            CPad__GetAutoClimb(thiz) || PcInputIsPressed(PcInputAction::VEHICLE);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK];
     }
 }
@@ -147,7 +161,8 @@ uint32_t CPad__DiveJustDown_hook()
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad__DiveJustDown();
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] =
+            CPad__DiveJustDown() || PcInputIsPressed(PcInputAction::FIRE);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
     }
 }
@@ -161,7 +176,8 @@ uint32_t CPad__SwimJumpJustDown_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad__SwimJumpJustDown(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] =
+            CPad__SwimJumpJustDown(thiz) || PcInputIsPressed(PcInputAction::JUMP);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
     }
 }
@@ -175,7 +191,8 @@ uint32_t CPad__DuckJustDown_hook(uintptr_t thiz, int unk)
     }
     else
     {
-        return CPad__DuckJustDown(thiz, unk);
+        return CPad__DuckJustDown(thiz, unk) ||
+               PcInputConsumePress(PcInputAction::CROUCH);
     }
 }
 
@@ -198,7 +215,8 @@ uint32_t CPad__MeleeAttackJustDown_hook(uintptr_t thiz)
     }
     else
     {
-        uint32_t dwResult = CPad__MeleeAttackJustDown(thiz);
+        uint32_t dwResult = CPad__MeleeAttackJustDown(thiz) ||
+                            PcInputIsPressed(PcInputAction::FIRE);
         //LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
 
         //if(dwResult == 2)
@@ -244,6 +262,10 @@ int16_t CPad__GetSteeringLeftRight_hook(uintptr_t thiz)
     {
         // local player
         LocalPlayerKeys.wKeyLR = CPad__GetSteeringLeftRight(thiz);
+        if (PcInputIsPressed(PcInputAction::MOVE_LEFT))
+            LocalPlayerKeys.wKeyLR = 0xFF80;
+        else if (PcInputIsPressed(PcInputAction::MOVE_RIGHT))
+            LocalPlayerKeys.wKeyLR = 0x80;
         return LocalPlayerKeys.wKeyLR;
     }
 }
@@ -260,6 +282,10 @@ uint16_t CPad__GetSteeringUpDown_hook(uintptr_t thiz)
     {
         // local player
         LocalPlayerKeys.wKeyUD = CPad__GetSteeringUpDown(thiz);
+        if (PcInputIsPressed(PcInputAction::MOVE_FORWARD))
+            LocalPlayerKeys.wKeyUD = 0xFF80;
+        else if (PcInputIsPressed(PcInputAction::MOVE_BACKWARD))
+            LocalPlayerKeys.wKeyUD = 0x80;
         return LocalPlayerKeys.wKeyUD;
     }
 }
@@ -280,6 +306,8 @@ uint16_t CPad__GetAccelerate_hook(uintptr_t thiz)
         {
             if(pPlayerPed->IsInJetpackMode()) {
                 uint16_t wAccelerate = CPad__GetAccelerate(thiz);
+                if (PcInputIsPressed(PcInputAction::MOVE_FORWARD))
+                    wAccelerate = 0xFF;
                 LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = wAccelerate;
                 return wAccelerate;
             }
@@ -290,6 +318,8 @@ uint16_t CPad__GetAccelerate_hook(uintptr_t thiz)
 
         // local player
         uint16_t wAccelerate = CPad__GetAccelerate(thiz);
+        if (PcInputIsPressed(PcInputAction::MOVE_FORWARD))
+            wAccelerate = 0xFF;
         LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = wAccelerate;
         if (wAccelerate == 0xFF)
         {
@@ -329,6 +359,8 @@ uint16_t CPad__GetBrake_hook(uintptr_t thiz)
 
         // local player
         uint16_t wBrake = CPad__GetBrake(thiz);
+        if (PcInputIsPressed(PcInputAction::MOVE_BACKWARD))
+            wBrake = 0xFF;
         LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = wBrake;
         if (wBrake == 0xFF)
         {
@@ -359,7 +391,8 @@ uint32_t CPad__GetHandBrake_hook(uintptr_t thiz)
     else
     {
         // local player
-        uint32_t handBrake = CPad__GetHandBrake(thiz);
+        uint32_t handBrake = CPad__GetHandBrake(thiz) ||
+                             PcInputIsPressed(PcInputAction::JUMP);
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = handBrake;
         return handBrake;
     }
@@ -377,8 +410,8 @@ uint32_t CPad__GetHorn_hook(uintptr_t thiz)
     {
         // local player
         uint32_t horn = CPad__GetHorn(thiz);
-        //Log("horn: %d", horn);
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = CPad__GetHorn(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] =
+            horn || PcInputIsPressed(PcInputAction::CROUCH);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH];
     }
 }
@@ -449,7 +482,8 @@ bool CPad__GetEnterTargeting_hook(uintptr_t thiz)
     {
         uint8_t old =   *pbyteCurrentPlayer;
           *pbyteCurrentPlayer = byteCurPlayer;
-        uintptr_t result = CPad__GetEnterTargeting(thiz);
+        uintptr_t result = CPad__GetEnterTargeting(thiz) ||
+                           PcInputIsPressed(PcInputAction::AIM);
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = result;
           *pbyteCurrentPlayer = old;
         return result;
@@ -462,6 +496,9 @@ uint32_t (*CPad__CycleWeaponRightJustDown)(uintptr_t thiz);
 uint32_t CPad__CycleWeaponRightJustDown_hook(uintptr_t thiz)
 {
     if(dwCurPlayerActor && (byteCurPlayer != 0)) return 0;
+
+    if (PcInputConsumeWeaponWheel(1))
+        return 1;
 
     if(!bWeaponClicked) {
         return 0;
@@ -482,6 +519,8 @@ uint32_t CPad__CycleWeaponLeftJustDown_hook(uintptr_t thiz)
     }
     else
     {
+        if (PcInputConsumeWeaponWheel(-1))
+            return 1;
         return CPad__CycleWeaponLeftJustDown(thiz);
     }
 }
@@ -495,7 +534,8 @@ bool CPad__GetWeapon_hook(uintptr_t thiz, CPedGTA* pPed)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad__GetWeapon(thiz, pPed);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] =
+            CPad__GetWeapon(thiz, pPed) || PcInputIsPressed(PcInputAction::FIRE);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
     }
 }
@@ -511,7 +551,9 @@ uint32_t CCamera_IsTargetingActive_hook(uintptr_t thiz, CPedGTA* pPed)
     {
         /* CCamera::IsTargetingActive */
         static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0x9F86F8);
-        uint32_t bIsTargeting = CHook::CallFunction<bool>(g_libGTASA + 0x46DE58, &TheCamera);
+        uint32_t bIsTargeting =
+            CHook::CallFunction<bool>(g_libGTASA + 0x46DE58, &TheCamera) ||
+            PcInputIsPressed(PcInputAction::AIM);
 
         LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = bIsTargeting;
         return bIsTargeting;
@@ -551,7 +593,8 @@ int CPad__GetNitroFired_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad__GetNitroFired(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] =
+            CPad__GetNitroFired(thiz) || PcInputIsPressed(PcInputAction::FIRE);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
     }
 }
@@ -566,7 +609,8 @@ uint32_t CPad__GetLookLeft_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad__GetLookLeft(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] =
+            CPad__GetLookLeft(thiz) || PcInputIsPressed(PcInputAction::FIRE);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
     }
 }
@@ -581,7 +625,8 @@ uint32_t CPad__GetLookRight_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad__GetLookRight(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] =
+            CPad__GetLookRight(thiz) || PcInputIsPressed(PcInputAction::FIRE);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
     }
 }
@@ -669,7 +714,8 @@ uint32_t CPad__GetCarGunFired_hook(uintptr_t thiz)
     }
     else
     {
-        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad__GetCarGunFired(thiz);
+        LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] =
+            CPad__GetCarGunFired(thiz) || PcInputIsPressed(PcInputAction::FIRE);
         return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
     }
 }

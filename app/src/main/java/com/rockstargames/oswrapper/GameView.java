@@ -99,6 +99,12 @@ public   class GameView extends SurfaceView implements SurfaceHolder.Callback2 {
         return this.inputHandler.onGenericMotionEvent(event) || super.onGenericMotionEvent(event);
     }
 
+    @Override
+    public void onPointerCaptureChange(boolean hasCapture) {
+        super.onPointerCaptureChange(hasCapture);
+        this.inputHandler.onPointerCaptureChanged(hasCapture);
+    }
+
     @Override // android.view.View, android.view.KeyEvent.Callback
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         return this.inputHandler.onKeyDown(keyCode, event) || super.onKeyDown(keyCode, event);
@@ -153,6 +159,7 @@ public   class GameView extends SurfaceView implements SurfaceHolder.Callback2 {
         setFocusableInTouchMode(true);
         requestFocus();
         this.activity = activity;
+        this.inputHandler.setGameView(this);
         Iterator<GameViewHandler> it = this.handlers.iterator();
         while (it.hasNext()) {
             ((GameViewHandler) it.next()).setup(activity);

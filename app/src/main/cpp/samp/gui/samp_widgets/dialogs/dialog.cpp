@@ -55,6 +55,7 @@ void Dialog::show(int16_t dialog_id, DialogStyle dialog_style, const std::string
 		this->setVisible(true);
 
 		m_dialogID = dialog_id;
+		PcInputRefreshNativeInterfaceState();
 		//MyLog("Dialog ID %d", dialog_id);
 	}
 }
@@ -62,6 +63,13 @@ void Dialog::show(int16_t dialog_id, DialogStyle dialog_style, const std::string
 void Dialog::hide()
 {
 	this->setVisible(false);
+	PcInputRefreshNativeInterfaceState();
+}
+
+void Dialog::confirm()
+{
+	if (visible())
+		m_buttonPanel->confirm();
 }
 
 void Dialog::setTitleCaption(const std::string& caption)
@@ -183,6 +191,11 @@ void DialogButtonPanel::setButton1Caption(const std::string& caption)
 void DialogButtonPanel::setButton2Caption(const std::string& caption)
 {
 	m_button2->setCaption(caption);
+}
+
+void DialogButtonPanel::confirm()
+{
+	m_button1->touchPopEvent();
 }
 
 void DialogButtonPanel::performLayout()

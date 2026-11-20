@@ -3,10 +3,15 @@ package com.rockstargames.oswrapper.view;
 import android.graphics.PointF;
 import android.util.Log;
 import android.util.SparseArray;
+import android.os.Build;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.PointerIcon;
+import android.view.View;
 
+import com.gta.game.input.KeyboardMouseBridge;
+import com.gta.game.input.KeyboardMouseSettings;
 import com.rockstargames.oswrapper.GameActivityBase;
 import com.rockstargames.oswrapper.GameThread;
 import com.rockstargames.oswrapper.UtilsKt;
@@ -53,6 +58,20 @@ public class InputHandler implements GameViewHandler {
     private boolean dpadRightPressed;
 
     private   SparseArray<PointF> touches = new SparseArray<>();
+    private View gameView;
+    private boolean interfaceVisible;
+    private boolean managedInterfaceVisible;
+    private boolean manualInterfaceMode;
+    private boolean nativeTextEntryMode;
+    private boolean nativeTabMode;
+    private boolean pointerCaptured;
+    private float lastMouseX;
+    private float lastMouseY;
+    private boolean hasLastMousePosition;
+    private int pressedMouseButton;
+    private boolean mouseTouchActive;
+    private boolean closeNativeInterfaceOnNextInput;
+    private int mouseLogCounter;
 
     private InputHandler() {}
 
@@ -141,7 +160,69 @@ public class InputHandler implements GameViewHandler {
     // -----------------------------------------------------------------------
 
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        synchronizeNativeInterfaceState();
+        if (KeyboardMouseSettings.captureKey(event)) {
+            return true;
+        }
         boolean isGamepad = ((event != null ? event.getSource() : 0) & 16) != 0;
+        if (!isGamepad) {
+            KeyboardMouseSettings.setKeyState(keyCode, true);
+        }
+        if (!isGamepad && event != null && KeyboardMouseSettings.isEnabled()) {
+            if (keyCode == KeyEvent.KEYCODE_ESCAPE) {
+                Log.d(TAG, "PC key received: Escape");
+                if (managedInterfaceVisible) {
+                    return false;
+                }
+                if (!KeyboardMouseBridge.nativeIsTextEntryActive()) {
+                    toggleInterfaceMode();
+                } else {
+                    GameThread.INSTANCE.onPcTextInputKey(2, 0);
+                }
+                return true;
+            }
+            if (KeyboardMouseBridge.nativeIsTextEntryActive()) {
+                int textKey = textKeyFor(keyCode);
+                if (textKey >= 0) {
+                    GameThread.INSTANCE.onPcTextInputKey(textKey, 0);
+                    return true;
+                }
+                int unicode = event.getUnicodeChar();
+                if (unicode != 0) {
+                    GameThread.INSTANCE.onPcTextInputKey(-1, unicode);
+                    return true;
+                }
+            }
+            int mappedAction = KeyboardMouseSettings.actionForKey(keyCode);
+            boolean nativeInterfaceActive = KeyboardMouseBridge.nativeIsInterfaceActive();
+            if (interfaceVisible && mappedAction != KeyboardMouseSettings.TAB &&
+                    (!nativeInterfaceActive || mappedAction != KeyboardMouseSettings.ENTER)) {
+                return true;
+            }
+            int action = mappedAction;
+            if (action == KeyboardMouseSettings.CHAT &&
+                    !KeyboardMouseBridge.nativeIsTextEntryActive()) {
+                Log.d(TAG, "PC key received: chat");
+                nativeTextEntryMode = true;
+                updateInterfaceVisibility();
+                GameThread.INSTANCE.onPcOpenChat();
+                return true;
+            }
+            if (action >= 0) {
+                if (event.getRepeatCount() == 0) {
+                    Log.d(TAG, "PC key received: code=" + keyCode + " action=" + action);
+                }
+                KeyboardMouseSettings.setKeyState(keyCode, true);
+                if (event.getRepeatCount() == 0) {
+                    if (action == KeyboardMouseSettings.TAB) {
+                        nativeTabMode = true;
+                        updateInterfaceVisibility();
+                    }
+                    GameThread.INSTANCE.onPcInputAction(action, true);
+                }
+                return true;
+            }
+        }
         if (keyCode == 4 && !isGamepad) {
             return true; // consume, handle on up
         }
@@ -152,7 +233,24 @@ public class InputHandler implements GameViewHandler {
     }
 
     public boolean onKeyUp(int keyCode, KeyEvent event) {
+        synchronizeNativeInterfaceState();
+        if (event != null && !((event.getSource() & 16) != 0)) {
+            KeyboardMouseSettings.setKeyState(keyCode, false);
+            int action = KeyboardMouseSettings.actionForKey(keyCode);
+            if (action >= 0 && KeyboardMouseSettings.isEnabled()) {
+                Log.d(TAG, "PC key released: code=" + keyCode + " action=" + action);
+                if (action == KeyboardMouseSettings.TAB) {
+                    nativeTabMode = false;
+                    updateInterfaceVisibility();
+                }
+                GameThread.INSTANCE.onPcInputAction(action, false);
+                return true;
+            }
+        }
         boolean isGamepad = ((event != null ? event.getSource() : 0) & 16) != 0;
+        if (interfaceVisible && !isGamepad) {
+            return true;
+        }
         if (keyCode == 4 && !isGamepad) {
             onBackPressed();
             return true;
@@ -168,7 +266,14 @@ public class InputHandler implements GameViewHandler {
     // -----------------------------------------------------------------------
 
     public final boolean onGenericMotionEvent(MotionEvent event) {
-        if (event == null || (event.getSource() & 16) == 0) {
+        if (event == null) {
+            return false;
+        }
+        synchronizeNativeInterfaceState();
+        if ((event.getSource() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) {
+            return onMouseMotionEvent(event);
+        }
+        if ((event.getSource() & 16) == 0) {
             return false;
         }
         float axisValue = event.getAxisValue(0);
@@ -221,6 +326,10 @@ public class InputHandler implements GameViewHandler {
 
     public final boolean onTouchEvent(MotionEvent event) {
         Intrinsics.checkNotNullParameter(event, "event");
+        synchronizeNativeInterfaceState();
+        if ((event.getSource() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) {
+            return onMouseMotionEvent(event);
+        }
         int actionIndex = event.getActionIndex();
         int pointerId = event.getPointerId(actionIndex);
         int i = 0;
@@ -281,14 +390,204 @@ public class InputHandler implements GameViewHandler {
 
     @Override
     public void setup(GameActivityBase activity) {
-        // nothing needed
+        KeyboardMouseSettings.load(activity);
+        GameThread.INSTANCE.onPcInputEnabled(KeyboardMouseSettings.isEnabled());
+        updatePointerCapture();
     }
 
     @Override
-    public void onPause() {}
+    public void onPause() {
+        nativeTabMode = false;
+        releasePcKeys();
+        updateInterfaceVisibility();
+        if (pointerCaptured && gameView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            gameView.releasePointerCapture();
+            pointerCaptured = false;
+        }
+    }
 
     @Override
-    public void onResume() {}
+    public void onResume() {
+        updateInterfaceVisibility();
+        updatePointerCapture();
+    }
+
+    public void setGameView(View view) {
+        gameView = view;
+        updatePointerCapture();
+    }
+
+    public void onPointerCaptureChanged(boolean captured) {
+        pointerCaptured = captured;
+        hasLastMousePosition = false;
+    }
+
+    public void setInterfaceVisible(boolean visible) {
+        managedInterfaceVisible = visible;
+        updateInterfaceVisibility();
+    }
+
+    private boolean onMouseMotionEvent(MotionEvent event) {
+        if (KeyboardMouseSettings.isCapturingBinding() &&
+                KeyboardMouseSettings.captureMouse(event)) {
+            return true;
+        }
+        int action = event.getActionMasked();
+        if (interfaceVisible) {
+            int button = event.getActionButton();
+            if (button == 0 && action == MotionEvent.ACTION_DOWN) {
+                button = MotionEvent.BUTTON_PRIMARY;
+            } else if (button == 0 && action == MotionEvent.ACTION_UP) {
+                button = pressedMouseButton;
+            }
+            if ((action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_DOWN) &&
+                    button == MotionEvent.BUTTON_PRIMARY && !mouseTouchActive) {
+                mouseTouchActive = true;
+                GameThread.INSTANCE.onTouchStart(-1, event.getX(), event.getY());
+            } else if ((action == MotionEvent.ACTION_BUTTON_RELEASE || action == MotionEvent.ACTION_UP) &&
+                    mouseTouchActive) {
+                mouseTouchActive = false;
+                GameThread.INSTANCE.onTouchEnd(-1, event.getX(), event.getY());
+            } else if ((action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_MOVE) &&
+                    mouseTouchActive) {
+                GameThread.INSTANCE.onTouchMove(-1, event.getX(), event.getY());
+            }
+            if (action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_DOWN) {
+                pressedMouseButton = button;
+            } else if (action == MotionEvent.ACTION_BUTTON_RELEASE || action == MotionEvent.ACTION_UP) {
+                pressedMouseButton = 0;
+            }
+            return true;
+        }
+        if (action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_BUTTON_RELEASE ||
+                action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP) {
+            int button = event.getActionButton();
+            if (button == 0 && action == MotionEvent.ACTION_DOWN) {
+                button = MotionEvent.BUTTON_PRIMARY;
+            } else if (button == 0 && action == MotionEvent.ACTION_UP) {
+                button = pressedMouseButton;
+            }
+            if (button == MotionEvent.BUTTON_PRIMARY || button == MotionEvent.BUTTON_SECONDARY) {
+                boolean down = action == MotionEvent.ACTION_BUTTON_PRESS ||
+                        action == MotionEvent.ACTION_DOWN;
+                pressedMouseButton = down ? button : 0;
+                int mapped = KeyboardMouseSettings.actionForMouseButton(button);
+                Log.d(TAG, "PC mouse button received: button=" + button + " down=" + down);
+                KeyboardMouseSettings.setMouseState(button, down);
+                if (mapped >= 0 && KeyboardMouseSettings.isEnabled()) {
+                    GameThread.INSTANCE.onPcInputAction(mapped, down);
+                }
+                return true;
+            }
+        }
+        if ((action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_MOVE) &&
+                KeyboardMouseSettings.isEnabled() && !interfaceVisible) {
+            float dx;
+            float dy;
+            if (pointerCaptured && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
+                dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
+            } else {
+                float x = event.getX();
+                float y = event.getY();
+                dx = hasLastMousePosition ? x - lastMouseX : 0;
+                dy = hasLastMousePosition ? y - lastMouseY : 0;
+                lastMouseX = x;
+                lastMouseY = y;
+                hasLastMousePosition = true;
+            }
+            dx = KeyboardMouseSettings.scaleMouseX(dx);
+            dy = KeyboardMouseSettings.scaleMouseY(dy);
+            if (dx != 0 || dy != 0) {
+                if (++mouseLogCounter % 60 == 0) {
+                    Log.d(TAG, "PC mouse delta received: " + dx + "," + dy);
+                }
+                GameThread.INSTANCE.onPcMouseDelta(dx, dy);
+            }
+            return true;
+        }
+        if (action == MotionEvent.ACTION_SCROLL && KeyboardMouseSettings.isEnabled() &&
+                !interfaceVisible) {
+            float wheel = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
+            if (wheel != 0) {
+                GameThread.INSTANCE.onPcMouseWheel(wheel > 0 ? 1 : -1);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int textKeyFor(int keyCode) {
+        if (keyCode == KeyEvent.KEYCODE_DEL) {
+            return 0;
+        }
+        if (keyCode == KeyEvent.KEYCODE_ENTER) {
+            return 1;
+        }
+        return -1;
+    }
+
+    private void toggleInterfaceMode() {
+        boolean nativeInterfaceActive = KeyboardMouseBridge.nativeIsInterfaceActive();
+        if (nativeInterfaceActive) {
+            closeNativeInterfaceOnNextInput = true;
+            GameThread.INSTANCE.onPcEscape();
+            return;
+        }
+        manualInterfaceMode = !manualInterfaceMode;
+        updateInterfaceVisibility();
+    }
+
+    private void updatePointerCapture() {
+        if (gameView == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+        gameView.post(() -> {
+            boolean shouldCapture = KeyboardMouseSettings.isEnabled() && !interfaceVisible &&
+                    !KeyboardMouseBridge.nativeIsInterfaceActive() && gameView.hasWindowFocus();
+            if (shouldCapture && !pointerCaptured) {
+                gameView.requestPointerCapture();
+                pointerCaptured = true;
+            } else if (!shouldCapture && pointerCaptured) {
+                gameView.releasePointerCapture();
+                pointerCaptured = false;
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                gameView.setPointerIcon(PointerIcon.getSystemIcon(gameView.getContext(),
+                        shouldCapture ? PointerIcon.TYPE_NULL : PointerIcon.TYPE_ARROW));
+            }
+            hasLastMousePosition = false;
+        });
+    }
+
+    private void synchronizeNativeInterfaceState() {
+        boolean nativeInterfaceActive = KeyboardMouseBridge.nativeIsInterfaceActive();
+        if (!KeyboardMouseBridge.nativeIsTextEntryActive() && !nativeInterfaceActive) {
+            nativeTextEntryMode = false;
+        }
+        if (closeNativeInterfaceOnNextInput && !nativeInterfaceActive) {
+            closeNativeInterfaceOnNextInput = false;
+        }
+        updateInterfaceVisibility();
+    }
+
+    private void updateInterfaceVisibility() {
+        boolean visible = managedInterfaceVisible || manualInterfaceMode ||
+                nativeTextEntryMode || nativeTabMode || KeyboardMouseBridge.nativeIsInterfaceActive();
+        if (interfaceVisible != visible) {
+            interfaceVisible = visible;
+            if (visible) {
+                releasePcKeys();
+            }
+            updatePointerCapture();
+        }
+    }
+
+    private void releasePcKeys() {
+        for (int action = 0; action < KeyboardMouseSettings.ACTION_COUNT; action++) {
+            GameThread.INSTANCE.onPcInputAction(action, false);
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Helpers

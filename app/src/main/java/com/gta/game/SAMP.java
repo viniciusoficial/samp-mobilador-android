@@ -8,6 +8,7 @@ import com.joom.paranoid.Obfuscate;
 import com.gta.game.ui.AttachEdit;
 import com.gta.game.ui.LoadingScreen;
 import com.gta.game.ui.dialog.DialogManager;
+import com.gta.game.input.KeyboardMouseSettings;
 
 @Obfuscate
 public class SAMP extends GTASA implements HeightProvider.HeightListener {
@@ -65,7 +66,13 @@ public class SAMP extends GTASA implements HeightProvider.HeightListener {
         final String content = new String(bArr2);
         final String leftBtnText = new String(bArr3);
         final String rightBtnText = new String(bArr4);
-        runOnUiThread(() -> { this.mDialog.show(dialogId, dialogTypeId, caption, content, leftBtnText, rightBtnText); });
+        runOnUiThread(() -> {
+            this.mDialog.show(dialogId, dialogTypeId, caption, content, leftBtnText, rightBtnText);
+        });
+    }
+
+    public void showKeyboardMouseSettings() {
+        runOnUiThread(() -> KeyboardMouseSettings.show(this));
     }
     private void showEditObject() {
         runOnUiThread(() -> mAttachEdit.show());

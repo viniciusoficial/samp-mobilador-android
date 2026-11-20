@@ -41,6 +41,7 @@ void PlayerTabList::show()
 
 
     setVisible(true);
+    PcInputRefreshNativeInterfaceState();
 }
 
 void PlayerTabList::hide()
@@ -60,6 +61,7 @@ void PlayerTabList::hide()
 
     pGame->EnableGameInput(true);
     setVisible(false);
+    PcInputRefreshNativeInterfaceState();
 }
 
 std::string int_to_hex(int val)

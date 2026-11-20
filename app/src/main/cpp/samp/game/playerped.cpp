@@ -666,19 +666,22 @@ uint8_t CPlayerPed::GetAdditionalKeys()
 {
     uint8_t byteRet = 0;
 
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_YES])
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_YES] ||
+       PcInputConsumePress(PcInputAction::YES))
     {
         byteRet = 1;
         LocalPlayerKeys.bKeys[ePadKeys::KEY_YES] = false;
     }
 
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_NO])
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_NO] ||
+       PcInputConsumePress(PcInputAction::NO))
     {
         byteRet = 2;
         LocalPlayerKeys.bKeys[ePadKeys::KEY_NO] = false;
     }
 
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_CTRL_BACK])
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_CTRL_BACK] ||
+       PcInputConsumePress(PcInputAction::CONTROL_BACK))
     {
         byteRet = 3;
         LocalPlayerKeys.bKeys[ePadKeys::KEY_CTRL_BACK] = false;
@@ -707,7 +710,8 @@ uint16_t CPlayerPed::GetKeys(uint16_t *lrAnalog, uint16_t *udAnalog, bool clear)
     if (LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_UP]) wRet |= 1;
     wRet <<= 1;
     // KEY_WALK
-    if (LocalPlayerKeys.bKeys[ePadKeys::KEY_WALK]) wRet |= 1;
+    if (LocalPlayerKeys.bKeys[ePadKeys::KEY_WALK] ||
+        PcInputIsPressed(PcInputAction::WALK)) wRet |= 1;
     wRet <<= 1;
     // KEY_SUBMISSION
     if (LocalPlayerKeys.bKeys[ePadKeys::KEY_SUBMISSION]) wRet |= 1;
@@ -716,25 +720,31 @@ uint16_t CPlayerPed::GetKeys(uint16_t *lrAnalog, uint16_t *udAnalog, bool clear)
     if (IsInVehicle() && LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_LEFT]) wRet |= 1;
     wRet <<= 1;
     // KEY_HANDBRAKE
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE]/*true*/) wRet |= 1;
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] ||
+       PcInputIsPressed(PcInputAction::AIM)) wRet |= 1;
     wRet <<= 1;
     // KEY_LOOK_RIGHT
     if(IsInVehicle() && LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_RIGHT]) wRet |= 1;
     wRet <<= 1;
     // KEY_JUMP
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP]) wRet |= 1;
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] ||
+       PcInputIsPressed(PcInputAction::JUMP)) wRet |= 1;
     wRet <<= 1;
     // KEY_SECONDARY_ATTACK
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK]) wRet |= 1;
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] ||
+       PcInputIsPressed(PcInputAction::VEHICLE)) wRet |= 1;
     wRet <<= 1;
     // KEY_SPRINT
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT]) wRet |= 1;
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] ||
+       PcInputIsPressed(PcInputAction::SPRINT)) wRet |= 1;
     wRet <<= 1;
     // KEY_FIRE
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE]) wRet |= 1;
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] ||
+       PcInputIsPressed(PcInputAction::FIRE)) wRet |= 1;
     wRet <<= 1;
     // KEY_CROUCH
-    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH]) wRet |= 1;
+    if(LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] ||
+       PcInputIsPressed(PcInputAction::CROUCH)) wRet |= 1;
     wRet <<= 1;
     // KEY_ACTION
     if(LocalPlayerKeys.bKeys[ePadKeys::KEY_ACTION]) wRet |= 1;

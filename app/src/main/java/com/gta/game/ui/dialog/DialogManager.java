@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import com.joom.paranoid.Obfuscate;
+import com.rockstargames.oswrapper.view.InputHandler;
 import com.gta.game.R;
 import com.gta.launcher.util.CustomRecyclerView;
 import com.gta.launcher.util.Util;
@@ -146,6 +147,7 @@ public class DialogManager {
 
     public void show(int i, int i2, String str, String str2, String str3, String str4) {
         isShow = true;
+        InputHandler.INSTANCE.setInterfaceVisible(true);
         this.mCurrentDialogId = i;
         this.mDialogStyle = i2;
         this.mCaption = str;
@@ -188,6 +190,7 @@ public class DialogManager {
 
         isShow = false;
         Util.HideLayout(this.mMainLayout, true);
+        InputHandler.INSTANCE.setInterfaceVisible(false);
     }
 
     public void onHeightChanged(int i) {

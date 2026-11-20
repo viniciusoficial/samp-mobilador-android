@@ -13,6 +13,7 @@ public:
 	void clear() { m_input.clear(); m_caption.clear(); }
 
 	void addCharToInput(char value);
+	void addTextToInput(const std::string& value);
 	void popCharFromInput();
 
 	void setInputString(const std::string& string) { m_input = string; m_caption = Encoding::cp2utf(string); }

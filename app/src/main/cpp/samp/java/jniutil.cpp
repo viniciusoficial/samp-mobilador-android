@@ -48,6 +48,7 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_setPauseState = env->GetMethodID(clas, "setPauseState", "(Z)V");
     
     s_ShowDialog = env->GetMethodID(clas, "showDialog", "(II[B[B[B[B)V");
+    s_showKeyboardMouseSettings = env->GetMethodID(clas, "showKeyboardMouseSettings", "()V");
 
     s_exitGame = env->GetMethodID(clas, "exitGame", "()V");
 
@@ -55,6 +56,24 @@ CJavaWrapper::CJavaWrapper(JNIEnv *env, jobject activity)
     s_hideEditObject = env->GetMethodID(clas, "hideEditObject", "()V");
 
     env->DeleteLocalRef(clas);
+}
+
+void CJavaWrapper::ShowKeyboardMouseSettings()
+{
+    JNIEnv* env = GetEnv();
+    if (env == nullptr || s_showKeyboardMouseSettings == nullptr)
+    {
+        Log("PC input: unable to open keyboard/mouse settings");
+        return;
+    }
+
+    env->CallVoidMethod(activity, s_showKeyboardMouseSettings);
+    if (env->ExceptionCheck())
+    {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        Log("PC input: settings callback failed");
+    }
 }
 
 void CJavaWrapper::ShowLoadingScreen()
