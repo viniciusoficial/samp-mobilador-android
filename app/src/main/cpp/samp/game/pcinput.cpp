@@ -212,7 +212,7 @@ int PcInputConsumeWeaponWheel(int direction)
 
 void PcInputAddMouseDelta(float dx, float dy)
 {
-    if (!g_inputEnabled)
+    if (!g_inputEnabled || g_nativeInterfaceActive.load())
         return;
 
     g_mouseDeltaX = std::clamp(g_mouseDeltaX + dx, -32767.0f, 32767.0f);
@@ -221,8 +221,10 @@ void PcInputAddMouseDelta(float dx, float dy)
 
 void PcInputApplyMouse()
 {
-    if (!g_inputEnabled)
+    if (!g_inputEnabled || g_nativeInterfaceActive.load())
     {
+        g_mouseDeltaX = 0.0f;
+        g_mouseDeltaY = 0.0f;
         MouseControllerState* state = GetNewMouseControllerState();
         if (state != nullptr)
         {
@@ -330,6 +332,11 @@ void PcInputRefreshNativeInterfaceState()
         (pUI != nullptr && (pUI->dialog()->visible() || pUI->playertablist()->visible()));
     g_textEntryActive.store(textEntry);
     g_nativeInterfaceActive.store(interfaceActive);
+    if (interfaceActive)
+    {
+        g_mouseDeltaX = 0.0f;
+        g_mouseDeltaY = 0.0f;
+    }
 }
 
 extern "C"

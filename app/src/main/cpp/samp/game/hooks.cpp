@@ -135,8 +135,8 @@ void MainLoop();
 void(*Render2dStuff)();
 void Render2dStuff_hook()
 {
-    Render2dStuff();
     MainLoop();
+    Render2dStuff();
 
     if (pNetGame && pGame && !pGame->IsGamePaused())
     {

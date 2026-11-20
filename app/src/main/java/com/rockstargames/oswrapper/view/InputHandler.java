@@ -172,7 +172,8 @@ public class InputHandler implements GameViewHandler {
             if (keyCode == KeyEvent.KEYCODE_ESCAPE) {
                 Log.d(TAG, "PC key received: Escape");
                 if (managedInterfaceVisible) {
-                    return false;
+                    KeyboardMouseSettings.close();
+                    return true;
                 }
                 if (!KeyboardMouseBridge.nativeIsTextEntryActive()) {
                     toggleInterfaceMode();

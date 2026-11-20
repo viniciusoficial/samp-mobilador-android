@@ -1048,7 +1048,7 @@ void HookCPad()
     CHook::InlineHook("_ZN4CPad9GetWeaponEP4CPedb", &CPad__GetWeapon_hook, &CPad__GetWeapon);
     CHook::InlineHook("_ZN7CCamera17IsTargetingActiveEP10CPlayerPed", &CCamera_IsTargetingActive_hook, &CCamera_IsTargetingActive);
     CHook::InlineHook("_ZN4CPad24CycleWeaponRightJustDownEv", &CPad__CycleWeaponRightJustDown_hook, &CPad__CycleWeaponRightJustDown);
-    //CHook::InstallPLT(g_libGTASA + 0x66F304, (uintptr_t)CPad__CycleWeaponLeftJustDown_hook, (uintptr_t*)&CPad__CycleWeaponLeftJustDown);
+    CHook::InlineHook("_ZN4CPad23CycleWeaponLeftJustDownEv", &CPad__CycleWeaponLeftJustDown_hook, &CPad__CycleWeaponLeftJustDown);
 
     //
     CHook::InstallPLT(g_libGTASA + 0x83F190, &CPed__GetWeaponSkill_hook, &CPed__GetWeaponSkill);
