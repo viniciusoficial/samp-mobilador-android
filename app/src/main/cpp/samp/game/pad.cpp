@@ -995,6 +995,18 @@ void CPad__UpdateMouse_hook(uintptr_t thiz)
     PcInputApplyMouse();
 }
 
+int16_t (*CPad__LookAroundLeftRight)(uintptr_t thiz);
+int16_t CPad__LookAroundLeftRight_hook(uintptr_t thiz)
+{
+    return PcInputApplyMouseLookX(CPad__LookAroundLeftRight(thiz));
+}
+
+int16_t (*CPad__LookAroundUpDown)(uintptr_t thiz);
+int16_t CPad__LookAroundUpDown_hook(uintptr_t thiz)
+{
+    return PcInputApplyMouseLookY(CPad__LookAroundUpDown(thiz));
+}
+
 void HookCPad()
 {
     memset(&LocalPlayerKeys, 0, sizeof(PAD_KEYS));
@@ -1016,6 +1028,10 @@ void HookCPad()
     CHook::InstallPLT(g_libGTASA + 0x826A88, &TaskUseGun);
     CHook::InstallPLT(g_libGTASA + 0x82F5C0, &CPad__TaskProcess);
     CHook::InlineHook("_ZN4CPad11UpdateMouseEv", &CPad__UpdateMouse_hook, &CPad__UpdateMouse);
+    CHook::InlineHook("_ZN4CPad19LookAroundLeftRightEv",
+                      &CPad__LookAroundLeftRight_hook, &CPad__LookAroundLeftRight);
+    CHook::InlineHook("_ZN4CPad16LookAroundUpDownEv",
+                      &CPad__LookAroundUpDown_hook, &CPad__LookAroundUpDown);
 
     // lr/ud (onfoot)
     CHook::InlineHook("_ZN4CPad19GetPedWalkLeftRightEv", &CPad__GetPedWalkLeftRight_hook, &CPad__GetPedWalkLeftRight);

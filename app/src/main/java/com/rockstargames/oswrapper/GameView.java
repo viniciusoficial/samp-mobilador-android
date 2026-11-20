@@ -100,6 +100,12 @@ public   class GameView extends SurfaceView implements SurfaceHolder.Callback2 {
     }
 
     @Override
+    public boolean onCapturedPointerEvent(MotionEvent event) {
+        return this.inputHandler.onCapturedPointerEvent(event) ||
+                super.onCapturedPointerEvent(event);
+    }
+
+    @Override
     public void onPointerCaptureChange(boolean hasCapture) {
         super.onPointerCaptureChange(hasCapture);
         this.inputHandler.onPointerCaptureChanged(hasCapture);

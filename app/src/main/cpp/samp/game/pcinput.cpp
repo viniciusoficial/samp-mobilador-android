@@ -10,7 +10,8 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <dlfcn.h>
+#include <cmath>
+#include <mutex>
 
 extern bool bNeedEnterVehicle;
 class CNetGame;
@@ -23,52 +24,38 @@ namespace
     constexpr int kPcActionCount = static_cast<int>(PcInputAction::COUNT);
     std::array<bool, kPcActionCount> g_pressed{};
     std::array<bool, kPcActionCount> g_justPressed{};
-    bool g_inputEnabled = true;
+    std::atomic<bool> g_inputEnabled{true};
     bool g_driverVehicleEntryRequested = false;
     int g_weaponWheelSteps = 0;
+    std::mutex g_mouseDeltaMutex;
     float g_mouseDeltaX = 0.0f;
     float g_mouseDeltaY = 0.0f;
+    float g_frameMouseDeltaX = 0.0f;
+    float g_frameMouseDeltaY = 0.0f;
+    float g_smoothedMouseDeltaX = 0.0f;
+    float g_smoothedMouseDeltaY = 0.0f;
+    std::atomic<float> g_mouseMaxDelta{120.0f};
+    std::atomic<float> g_mouseSmoothing{0.0f};
+    std::atomic<int> g_primaryMouseAction{-1};
+    std::atomic<int> g_secondaryMouseAction{-1};
+    uint32_t g_mouseReceivedCount = 0;
     uint32_t g_mouseAppliedCount = 0;
+    uint32_t g_cameraAppliedCount = 0;
     std::atomic<bool> g_textEntryActive{false};
     std::atomic<bool> g_nativeInterfaceActive{false};
-
-    struct MouseControllerState
-    {
-        uint8_t buttons[4];
-        int16_t lookX;
-        int16_t lookY;
-        uint32_t wheel;
-        float pointerX;
-        float pointerY;
-    };
-
-    static_assert(sizeof(MouseControllerState) == 20);
-    static_assert(offsetof(MouseControllerState, lookX) == 4);
-    static_assert(offsetof(MouseControllerState, lookY) == 6);
-
-    MouseControllerState* GetNewMouseControllerState()
-    {
-        static void* gameLibrary = dlopen("libGame.so", RTLD_NOW);
-        static MouseControllerState* state = gameLibrary
-            ? static_cast<MouseControllerState*>(
-                dlsym(gameLibrary, "_ZN4CPad23NewMouseControllerStateE"))
-            : nullptr;
-
-        if (state == nullptr)
-        {
-            static bool logged = false;
-            if (!logged)
-            {
-                Log("PC input: libGame CPad mouse state symbol is unavailable");
-                logged = true;
-            }
-        }
-        return state;
-    }
 
     bool IsActionIndexValid(int action)
     {
         return action >= 0 && action < kPcActionCount;
+    }
+
+    std::atomic<int>* MouseActionForButton(int button)
+    {
+        if (button == 1)
+            return &g_primaryMouseAction;
+        if (button == 2)
+            return &g_secondaryMouseAction;
+        return nullptr;
     }
 
     std::string CodePointToUtf8(int codePoint)
@@ -103,7 +90,10 @@ namespace
 bool PcInputIsPressed(PcInputAction action)
 {
     const int index = static_cast<int>(action);
-    return g_inputEnabled && IsActionIndexValid(index) && g_pressed[index];
+    if (!g_inputEnabled.load() || !IsActionIndexValid(index))
+        return false;
+    return g_pressed[index] || g_primaryMouseAction.load() == index ||
+           g_secondaryMouseAction.load() == index;
 }
 
 bool PcInputConsumePress(PcInputAction action)
@@ -125,10 +115,19 @@ bool PcInputConsumeDriverVehicleEntry()
 
 void PcInputSetEnabled(bool enabled)
 {
-    g_inputEnabled = enabled;
+    g_inputEnabled.store(enabled);
     g_weaponWheelSteps = 0;
-    g_mouseDeltaX = 0.0f;
-    g_mouseDeltaY = 0.0f;
+    {
+        std::lock_guard<std::mutex> lock(g_mouseDeltaMutex);
+        g_mouseDeltaX = 0.0f;
+        g_mouseDeltaY = 0.0f;
+    }
+    g_frameMouseDeltaX = 0.0f;
+    g_frameMouseDeltaY = 0.0f;
+    g_smoothedMouseDeltaX = 0.0f;
+    g_smoothedMouseDeltaY = 0.0f;
+    g_primaryMouseAction.store(-1);
+    g_secondaryMouseAction.store(-1);
 
     if (!enabled)
     {
@@ -212,47 +211,144 @@ int PcInputConsumeWeaponWheel(int direction)
 
 void PcInputAddMouseDelta(float dx, float dy)
 {
-    if (!g_inputEnabled || g_nativeInterfaceActive.load())
+    if (!std::isfinite(dx) || !std::isfinite(dy))
+    {
+        Log("PC input C++: rejected non-finite mouse delta");
+        return;
+    }
+    if (!g_inputEnabled.load() || g_nativeInterfaceActive.load())
         return;
 
+    std::lock_guard<std::mutex> lock(g_mouseDeltaMutex);
     g_mouseDeltaX = std::clamp(g_mouseDeltaX + dx, -32767.0f, 32767.0f);
     g_mouseDeltaY = std::clamp(g_mouseDeltaY + dy, -32767.0f, 32767.0f);
+    if (++g_mouseReceivedCount % 60 == 1)
+    {
+        Log("[C++] mouse delta received=(%.2f,%.2f) accumulated=(%.2f,%.2f)",
+            dx, dy, g_mouseDeltaX, g_mouseDeltaY);
+    }
 }
 
 void PcInputApplyMouse()
 {
-    if (!g_inputEnabled || g_nativeInterfaceActive.load())
+    float dx = 0.0f;
+    float dy = 0.0f;
     {
+        std::lock_guard<std::mutex> lock(g_mouseDeltaMutex);
+        dx = g_mouseDeltaX;
+        dy = g_mouseDeltaY;
         g_mouseDeltaX = 0.0f;
         g_mouseDeltaY = 0.0f;
-        MouseControllerState* state = GetNewMouseControllerState();
-        if (state != nullptr)
-        {
-            state->lookX = 0;
-            state->lookY = 0;
-        }
-        return;
     }
-
-    const float dx = g_mouseDeltaX;
-    const float dy = g_mouseDeltaY;
-    g_mouseDeltaX = 0.0f;
-    g_mouseDeltaY = 0.0f;
-
-    MouseControllerState* state = GetNewMouseControllerState();
-    if (state == nullptr)
-        return;
-
-    state->lookX = static_cast<int16_t>(std::clamp(dx, -32767.0f, 32767.0f));
-    state->lookY = static_cast<int16_t>(std::clamp(dy, -32767.0f, 32767.0f));
-    if (dx == 0.0f && dy == 0.0f)
-        return;
-
-    if (++g_mouseAppliedCount % 60 == 0)
+    const uint32_t frame = ++g_mouseAppliedCount;
+    if (frame % 120 == 1)
     {
-        Log("PC input action: camera delta=(%d,%d)",
-            static_cast<int>(state->lookX), static_cast<int>(state->lookY));
+        Log("[C++] frame=%u consumed mouse delta=(%.2f,%.2f)",
+            frame, dx, dy);
     }
+
+    if (!g_inputEnabled.load() || g_nativeInterfaceActive.load())
+    {
+        g_frameMouseDeltaX = 0.0f;
+        g_frameMouseDeltaY = 0.0f;
+        g_smoothedMouseDeltaX = 0.0f;
+        g_smoothedMouseDeltaY = 0.0f;
+        return;
+    }
+
+    if (dx == 0.0f && dy == 0.0f)
+    {
+        g_frameMouseDeltaX = 0.0f;
+        g_frameMouseDeltaY = 0.0f;
+        g_smoothedMouseDeltaX = 0.0f;
+        g_smoothedMouseDeltaY = 0.0f;
+        return;
+    }
+
+    const float maxDelta = g_mouseMaxDelta.load();
+    const float smoothing = g_mouseSmoothing.load();
+    dx = std::clamp(dx, -maxDelta, maxDelta);
+    dy = std::clamp(dy, -maxDelta, maxDelta);
+    g_smoothedMouseDeltaX = dx * (1.0f - smoothing) +
+                            g_smoothedMouseDeltaX * smoothing;
+    g_smoothedMouseDeltaY = dy * (1.0f - smoothing) +
+                            g_smoothedMouseDeltaY * smoothing;
+    g_frameMouseDeltaX = g_smoothedMouseDeltaX;
+    g_frameMouseDeltaY = g_smoothedMouseDeltaY;
+}
+
+void PcInputSetMouseOptions(float maxDelta, float smoothing)
+{
+    if (!std::isfinite(maxDelta) || !std::isfinite(smoothing))
+    {
+        Log("PC input C++: rejected non-finite mouse options");
+        return;
+    }
+    g_mouseMaxDelta.store(std::clamp(maxDelta, 1.0f, 500.0f));
+    g_mouseSmoothing.store(std::clamp(smoothing, 0.0f, 0.9f));
+}
+
+void PcInputSetMouseButton(int button, int action, bool pressed)
+{
+    std::atomic<int>* mouseAction = MouseActionForButton(button);
+    if (mouseAction == nullptr)
+    {
+        Log("PC input C++: rejected mouse button=%d", button);
+        return;
+    }
+
+    if (!g_inputEnabled.load() || g_nativeInterfaceActive.load() ||
+        !IsActionIndexValid(action))
+    {
+        pressed = false;
+    }
+    mouseAction->store(pressed ? action : -1);
+    Log("[GAME] mouse button=%d action=%d pressed=%d", button, action, pressed);
+}
+
+void PcInputMouseLeave()
+{
+    {
+        std::lock_guard<std::mutex> lock(g_mouseDeltaMutex);
+        g_mouseDeltaX = 0.0f;
+        g_mouseDeltaY = 0.0f;
+    }
+    g_primaryMouseAction.store(-1);
+    g_secondaryMouseAction.store(-1);
+}
+
+int16_t PcInputApplyMouseLookX(int16_t current)
+{
+    const float delta = g_frameMouseDeltaX;
+    g_frameMouseDeltaX = 0.0f;
+    const int appliedDelta = static_cast<int>(std::lround(delta));
+    const int result = std::clamp(static_cast<int>(current) + appliedDelta, -32768, 32767);
+    static uint32_t lookCallCount = 0;
+    const bool logCall = ++lookCallCount % 120 == 1;
+    const bool logMotion = appliedDelta != 0 && ++g_cameraAppliedCount % 60 == 1;
+    if (logCall || logMotion)
+    {
+        Log("[GAME] camera lookX call=%u base=%d mouse=%.2f applied=%d",
+            lookCallCount, static_cast<int>(current), delta, result);
+    }
+    return static_cast<int16_t>(result);
+}
+
+int16_t PcInputApplyMouseLookY(int16_t current)
+{
+    const float delta = g_frameMouseDeltaY;
+    g_frameMouseDeltaY = 0.0f;
+    const int appliedDelta = static_cast<int>(std::lround(delta));
+    const int result = std::clamp(static_cast<int>(current) + appliedDelta, -32768, 32767);
+    static uint32_t lookCallCount = 0;
+    const bool logCall = ++lookCallCount % 120 == 1;
+    const bool logMotion = appliedDelta != 0 && ++g_cameraAppliedCount % 60 == 1;
+    if (logCall || logMotion)
+    {
+        Log("[GAME] camera lookY call=%u base=%d mouse=%.2f applied=%d",
+            lookCallCount, static_cast<int>(current), delta, result);
+    }
+    return static_cast<int16_t>(result);
 }
 
 void PcInputOpenChat()
@@ -334,8 +430,15 @@ void PcInputRefreshNativeInterfaceState()
     g_nativeInterfaceActive.store(interfaceActive);
     if (interfaceActive)
     {
+        std::lock_guard<std::mutex> lock(g_mouseDeltaMutex);
         g_mouseDeltaX = 0.0f;
         g_mouseDeltaY = 0.0f;
+        g_frameMouseDeltaX = 0.0f;
+        g_frameMouseDeltaY = 0.0f;
+        g_smoothedMouseDeltaX = 0.0f;
+        g_smoothedMouseDeltaY = 0.0f;
+        g_primaryMouseAction.store(-1);
+        g_secondaryMouseAction.store(-1);
     }
 }
 
@@ -358,13 +461,49 @@ extern "C"
     }
 
     JNIEXPORT void JNICALL
-    Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseDelta(
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeSetMouseOptions(
+        JNIEnv*, jclass, jfloat maxDelta, jfloat smoothing)
+    {
+        PcInputSetMouseOptions(maxDelta, smoothing);
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseMove(
         JNIEnv*, jclass, jfloat dx, jfloat dy)
     {
         static uint32_t mouseEventCount = 0;
-        if ((dx != 0.0f || dy != 0.0f) && ++mouseEventCount % 60 == 0)
-            Log("PC input JNI: mouse delta=(%.2f,%.2f)", dx, dy);
+        if ((dx != 0.0f || dy != 0.0f) && ++mouseEventCount % 60 == 1)
+            Log("[JNI] mouseMove delta=(%.2f,%.2f)", dx, dy);
         PcInputAddMouseDelta(dx, dy);
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseButtonDown(
+        JNIEnv*, jclass, jint button, jint action)
+    {
+        Log("[JNI] mouseButtonDown button=%d action=%d", button, action);
+        PcInputSetMouseButton(button, action, true);
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseButtonUp(
+        JNIEnv*, jclass, jint button)
+    {
+        Log("[JNI] mouseButtonUp button=%d", button);
+        PcInputSetMouseButton(button, -1, false);
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseEnter(JNIEnv*, jclass)
+    {
+        Log("[JNI] mouseEnter");
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeMouseLeave(JNIEnv*, jclass)
+    {
+        Log("[JNI] mouseLeave");
+        PcInputMouseLeave();
     }
 
     JNIEXPORT void JNICALL

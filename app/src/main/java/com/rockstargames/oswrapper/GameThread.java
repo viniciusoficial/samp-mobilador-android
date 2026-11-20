@@ -635,13 +635,6 @@ public final class GameThread {
         });
     }
 
-    public void onPcMouseDelta(final float dx, final float dy) {
-        queueEvent(() -> {
-            KeyboardMouseBridge.nativeMouseDelta(dx, dy);
-            return Unit.INSTANCE;
-        });
-    }
-
     public void onPcMouseWheel(final int direction) {
         queueEvent(() -> {
             KeyboardMouseBridge.nativeMouseWheel(direction);

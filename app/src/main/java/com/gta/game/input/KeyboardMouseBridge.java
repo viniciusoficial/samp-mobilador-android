@@ -14,7 +14,12 @@ public final class KeyboardMouseBridge {
 
     public static native void nativeSetEnabled(boolean enabled);
     public static native void nativeSetAction(int action, boolean pressed);
-    public static native void nativeMouseDelta(float dx, float dy);
+    public static native void nativeSetMouseOptions(float maxDelta, float smoothing);
+    public static native void nativeMouseMove(float dx, float dy);
+    public static native void nativeMouseButtonDown(int button, int action);
+    public static native void nativeMouseButtonUp(int button);
+    public static native void nativeMouseEnter();
+    public static native void nativeMouseLeave();
     public static native void nativeMouseWheel(int direction);
     public static native void nativeOpenChat();
     public static native void nativeTextInputKey(int key, int unicode);

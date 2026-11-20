@@ -68,7 +68,7 @@ public class InputHandler implements GameViewHandler {
     private float lastMouseX;
     private float lastMouseY;
     private boolean hasLastMousePosition;
-    private int pressedMouseButton;
+    private int pressedMouseButtons;
     private boolean mouseTouchActive;
     private boolean closeNativeInterfaceOnNextInput;
     private int mouseLogCounter;
@@ -272,7 +272,7 @@ public class InputHandler implements GameViewHandler {
         }
         synchronizeNativeInterfaceState();
         if ((event.getSource() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) {
-            return onMouseMotionEvent(event);
+            return onMouseMotionEvent(event, false);
         }
         if ((event.getSource() & 16) == 0) {
             return false;
@@ -329,7 +329,11 @@ public class InputHandler implements GameViewHandler {
         Intrinsics.checkNotNullParameter(event, "event");
         synchronizeNativeInterfaceState();
         if ((event.getSource() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) {
-            return onMouseMotionEvent(event);
+            return onMouseMotionEvent(event, false);
+        }
+        if (KeyboardMouseSettings.isEnabled() && !interfaceVisible) {
+            releaseTouchPointers();
+            return true;
         }
         int actionIndex = event.getActionIndex();
         int pointerId = event.getPointerId(actionIndex);
@@ -400,6 +404,8 @@ public class InputHandler implements GameViewHandler {
     public void onPause() {
         nativeTabMode = false;
         releasePcKeys();
+        releaseMouseButtons();
+        releaseTouchPointers();
         updateInterfaceVisibility();
         if (pointerCaptured && gameView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             gameView.releasePointerCapture();
@@ -421,6 +427,25 @@ public class InputHandler implements GameViewHandler {
     public void onPointerCaptureChanged(boolean captured) {
         pointerCaptured = captured;
         hasLastMousePosition = false;
+        if (gameView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            gameView.setPointerIcon(PointerIcon.getSystemIcon(gameView.getContext(),
+                    captured ? PointerIcon.TYPE_NULL : PointerIcon.TYPE_ARROW));
+        }
+        if (!captured) {
+            releaseMouseButtons();
+            KeyboardMouseBridge.nativeMouseLeave();
+        } else {
+            KeyboardMouseBridge.nativeMouseEnter();
+        }
+    }
+
+    public boolean onCapturedPointerEvent(MotionEvent event) {
+        if (event == null ||
+                (event.getSource() & InputDevice.SOURCE_MOUSE) != InputDevice.SOURCE_MOUSE) {
+            return false;
+        }
+        synchronizeNativeInterfaceState();
+        return onMouseMotionEvent(event, true);
     }
 
     public void setInterfaceVisible(boolean visible) {
@@ -428,69 +453,108 @@ public class InputHandler implements GameViewHandler {
         updateInterfaceVisibility();
     }
 
-    private boolean onMouseMotionEvent(MotionEvent event) {
+    public void onPcInputEnabledChanged() {
+        if (!KeyboardMouseSettings.isEnabled()) {
+            releaseMouseButtons();
+        }
+        updatePointerCapture();
+    }
+
+    private boolean onMouseMotionEvent(MotionEvent event, boolean capturedEvent) {
         if (KeyboardMouseSettings.isCapturingBinding() &&
                 KeyboardMouseSettings.captureMouse(event)) {
             return true;
         }
         int action = event.getActionMasked();
+        int source = event.getSource();
+        int deviceId = event.getDeviceId();
+        InputDevice device = InputDevice.getDevice(deviceId);
+        int deviceSources = device != null ? device.getSources() : 0;
+        float x = event.getX();
+        float y = event.getY();
+
+        if (action == MotionEvent.ACTION_HOVER_ENTER) {
+            hasLastMousePosition = false;
+            KeyboardMouseBridge.nativeMouseEnter();
+            logMouseEvent(event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
+            return true;
+        }
+        if (action == MotionEvent.ACTION_HOVER_EXIT) {
+            hasLastMousePosition = false;
+            releaseMouseButtons();
+            KeyboardMouseBridge.nativeMouseLeave();
+            logMouseEvent(event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
+            return true;
+        }
+
         if (interfaceVisible) {
-            int button = event.getActionButton();
-            if (button == 0 && action == MotionEvent.ACTION_DOWN) {
-                button = MotionEvent.BUTTON_PRIMARY;
-            } else if (button == 0 && action == MotionEvent.ACTION_UP) {
-                button = pressedMouseButton;
-            }
-            if ((action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_DOWN) &&
-                    button == MotionEvent.BUTTON_PRIMARY && !mouseTouchActive) {
-                mouseTouchActive = true;
-                GameThread.INSTANCE.onTouchStart(-1, event.getX(), event.getY());
-            } else if ((action == MotionEvent.ACTION_BUTTON_RELEASE || action == MotionEvent.ACTION_UP) &&
-                    mouseTouchActive) {
-                mouseTouchActive = false;
-                GameThread.INSTANCE.onTouchEnd(-1, event.getX(), event.getY());
+            if (isMouseButtonAction(action)) {
+                int button = resolveMouseButton(event, action);
+                boolean down = action == MotionEvent.ACTION_BUTTON_PRESS ||
+                        action == MotionEvent.ACTION_DOWN;
+                updatePressedMouseButtons(button, down);
+                if (button == MotionEvent.BUTTON_PRIMARY && down && !mouseTouchActive) {
+                    mouseTouchActive = true;
+                    lastMouseX = x;
+                    lastMouseY = y;
+                    GameThread.INSTANCE.onTouchStart(-1, x, y);
+                } else if (button == MotionEvent.BUTTON_PRIMARY && !down && mouseTouchActive) {
+                    mouseTouchActive = false;
+                    GameThread.INSTANCE.onTouchEnd(-1, x, y);
+                }
+                logMouseEvent(
+                        event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
             } else if ((action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_MOVE) &&
                     mouseTouchActive) {
-                GameThread.INSTANCE.onTouchMove(-1, event.getX(), event.getY());
-            }
-            if (action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_DOWN) {
-                pressedMouseButton = button;
-            } else if (action == MotionEvent.ACTION_BUTTON_RELEASE || action == MotionEvent.ACTION_UP) {
-                pressedMouseButton = 0;
+                GameThread.INSTANCE.onTouchMove(-1, x, y);
+                logMouseEvent(
+                        event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
+            } else if (action == MotionEvent.ACTION_HOVER_MOVE ||
+                    action == MotionEvent.ACTION_MOVE) {
+                logMouseEvent(
+                        event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
             }
             return true;
         }
-        if (action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_BUTTON_RELEASE ||
-                action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP) {
-            int button = event.getActionButton();
-            if (button == 0 && action == MotionEvent.ACTION_DOWN) {
-                button = MotionEvent.BUTTON_PRIMARY;
-            } else if (button == 0 && action == MotionEvent.ACTION_UP) {
-                button = pressedMouseButton;
-            }
+
+        if (isMouseButtonAction(action)) {
+            int button = resolveMouseButton(event, action);
+            boolean down = action == MotionEvent.ACTION_BUTTON_PRESS ||
+                    action == MotionEvent.ACTION_DOWN;
             if (button == MotionEvent.BUTTON_PRIMARY || button == MotionEvent.BUTTON_SECONDARY) {
-                boolean down = action == MotionEvent.ACTION_BUTTON_PRESS ||
-                        action == MotionEvent.ACTION_DOWN;
-                pressedMouseButton = down ? button : 0;
+                updatePressedMouseButtons(button, down);
                 int mapped = KeyboardMouseSettings.actionForMouseButton(button);
-                Log.d(TAG, "PC mouse button received: button=" + button + " down=" + down);
                 KeyboardMouseSettings.setMouseState(button, down);
-                if (mapped >= 0 && KeyboardMouseSettings.isEnabled()) {
-                    GameThread.INSTANCE.onPcInputAction(mapped, down);
+                if (KeyboardMouseSettings.isEnabled()) {
+                    if (down && mapped >= 0) {
+                        KeyboardMouseBridge.nativeMouseButtonDown(button, mapped);
+                    } else if (!down) {
+                        KeyboardMouseBridge.nativeMouseButtonUp(button);
+                    }
                 }
+                logMouseEvent(
+                        event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
                 return true;
             }
         }
+
+        if (action == MotionEvent.ACTION_CANCEL) {
+            releaseMouseButtons();
+            hasLastMousePosition = false;
+            KeyboardMouseBridge.nativeMouseLeave();
+            logMouseEvent(event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
+            return true;
+        }
+
         if ((action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_MOVE) &&
                 KeyboardMouseSettings.isEnabled() && !interfaceVisible) {
             float dx;
             float dy;
-            if (pointerCaptured && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (capturedEvent && action == MotionEvent.ACTION_MOVE &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
                 dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
             } else {
-                float x = event.getX();
-                float y = event.getY();
                 dx = hasLastMousePosition ? x - lastMouseX : 0;
                 dy = hasLastMousePosition ? y - lastMouseY : 0;
                 lastMouseX = x;
@@ -499,11 +563,10 @@ public class InputHandler implements GameViewHandler {
             }
             dx = KeyboardMouseSettings.scaleMouseX(dx);
             dy = KeyboardMouseSettings.scaleMouseY(dy);
+            logMouseEvent(
+                    event, source, deviceSources, x, y, dx, dy, capturedEvent);
             if (dx != 0 || dy != 0) {
-                if (++mouseLogCounter % 60 == 0) {
-                    Log.d(TAG, "PC mouse delta received: " + dx + "," + dy);
-                }
-                GameThread.INSTANCE.onPcMouseDelta(dx, dy);
+                KeyboardMouseBridge.nativeMouseMove(dx, dy);
             }
             return true;
         }
@@ -516,6 +579,103 @@ public class InputHandler implements GameViewHandler {
             }
         }
         return false;
+    }
+
+    private static boolean isMouseButtonAction(int action) {
+        return action == MotionEvent.ACTION_BUTTON_PRESS ||
+                action == MotionEvent.ACTION_BUTTON_RELEASE ||
+                action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP;
+    }
+
+    private int resolveMouseButton(MotionEvent event, int action) {
+        int button = event.getActionButton();
+        if (button == 0 && (action == MotionEvent.ACTION_DOWN ||
+                action == MotionEvent.ACTION_BUTTON_PRESS)) {
+            int state = event.getButtonState();
+            if ((state & MotionEvent.BUTTON_PRIMARY) != 0) {
+                return MotionEvent.BUTTON_PRIMARY;
+            }
+            if ((state & MotionEvent.BUTTON_SECONDARY) != 0) {
+                return MotionEvent.BUTTON_SECONDARY;
+            }
+            return MotionEvent.BUTTON_PRIMARY;
+        }
+        if (button == 0 && (action == MotionEvent.ACTION_UP ||
+                action == MotionEvent.ACTION_BUTTON_RELEASE)) {
+            int releasedButton = pressedMouseButtons & ~event.getButtonState();
+            if ((releasedButton & MotionEvent.BUTTON_PRIMARY) != 0) {
+                return MotionEvent.BUTTON_PRIMARY;
+            }
+            if ((releasedButton & MotionEvent.BUTTON_SECONDARY) != 0) {
+                return MotionEvent.BUTTON_SECONDARY;
+            }
+            if ((pressedMouseButtons & MotionEvent.BUTTON_PRIMARY) != 0) {
+                return MotionEvent.BUTTON_PRIMARY;
+            }
+            if ((pressedMouseButtons & MotionEvent.BUTTON_SECONDARY) != 0) {
+                return MotionEvent.BUTTON_SECONDARY;
+            }
+        }
+        return button;
+    }
+
+    private void updatePressedMouseButtons(int button, boolean down) {
+        if (button != MotionEvent.BUTTON_PRIMARY && button != MotionEvent.BUTTON_SECONDARY) {
+            return;
+        }
+        if (down) {
+            pressedMouseButtons |= button;
+        } else {
+            pressedMouseButtons &= ~button;
+        }
+    }
+
+    private void releaseMouseButtons() {
+        int buttons = pressedMouseButtons;
+        pressedMouseButtons = 0;
+        if (mouseTouchActive) {
+            GameThread.INSTANCE.onTouchEnd(-1, lastMouseX, lastMouseY);
+        }
+        mouseTouchActive = false;
+        for (int button : new int[] {
+                MotionEvent.BUTTON_PRIMARY, MotionEvent.BUTTON_SECONDARY
+        }) {
+            if ((buttons & button) != 0) {
+                KeyboardMouseSettings.setMouseState(button, false);
+                KeyboardMouseBridge.nativeMouseButtonUp(button);
+            }
+        }
+    }
+
+    private void releaseTouchPointers() {
+        for (int i = 0; i < touches.size(); i++) {
+            int pointerId = touches.keyAt(i);
+            PointF point = touches.valueAt(i);
+            if (point != null) {
+                GameThread.INSTANCE.onTouchEnd(pointerId, point.x, point.y);
+            }
+        }
+        touches.clear();
+    }
+
+    private void logMouseEvent(
+            MotionEvent event, int source, int deviceSources, float x, float y,
+            float dx, float dy, boolean capturedEvent) {
+        int action = event.getActionMasked();
+        boolean importantEvent = isMouseButtonAction(action) ||
+                action == MotionEvent.ACTION_CANCEL ||
+                action == MotionEvent.ACTION_HOVER_ENTER ||
+                action == MotionEvent.ACTION_HOVER_EXIT;
+        if (importantEvent || ++mouseLogCounter % 60 == 1) {
+            Log.d(TAG, "[Java] source=0x" + Integer.toHexString(source) +
+                    " deviceSources=0x" + Integer.toHexString(deviceSources) +
+                    " deviceId=" + event.getDeviceId() +
+                    " action=" + action +
+                    " x=" + x + " y=" + y +
+                    " deltaX=" + dx + " deltaY=" + dy +
+                    " captured=" + capturedEvent +
+                    " buttons=0x" + Integer.toHexString(event.getButtonState()));
+        }
     }
 
     private static int textKeyFor(int keyCode) {
@@ -548,14 +708,12 @@ public class InputHandler implements GameViewHandler {
                     !KeyboardMouseBridge.nativeIsInterfaceActive() && gameView.hasWindowFocus();
             if (shouldCapture && !pointerCaptured) {
                 gameView.requestPointerCapture();
-                pointerCaptured = true;
             } else if (!shouldCapture && pointerCaptured) {
                 gameView.releasePointerCapture();
-                pointerCaptured = false;
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 gameView.setPointerIcon(PointerIcon.getSystemIcon(gameView.getContext(),
-                        shouldCapture ? PointerIcon.TYPE_NULL : PointerIcon.TYPE_ARROW));
+                        pointerCaptured ? PointerIcon.TYPE_NULL : PointerIcon.TYPE_ARROW));
             }
             hasLastMousePosition = false;
         });
@@ -578,6 +736,8 @@ public class InputHandler implements GameViewHandler {
         if (interfaceVisible != visible) {
             interfaceVisible = visible;
             if (visible) {
+                releaseMouseButtons();
+                releaseTouchPointers();
                 releasePcKeys();
             }
             updatePointerCapture();

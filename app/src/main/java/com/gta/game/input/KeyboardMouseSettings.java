@@ -85,6 +85,8 @@ public final class KeyboardMouseSettings {
     private static boolean enabled = true;
     private static float sensitivityX = 1.0f;
     private static float sensitivityY = 1.0f;
+    private static float maxMouseDelta = 120.0f;
+    private static float mouseSmoothing;
     private static boolean invertX;
     private static boolean invertY;
 
@@ -113,8 +115,11 @@ public final class KeyboardMouseSettings {
         enabled = prefs.getBoolean("enabled", true);
         sensitivityX = normalizeSensitivity(prefs.getFloat("sensitivity_x", 1.0f));
         sensitivityY = normalizeSensitivity(prefs.getFloat("sensitivity_y", 1.0f));
+        maxMouseDelta = normalizeMaxMouseDelta(prefs.getFloat("mouse_max_delta", 120.0f));
+        mouseSmoothing = normalizeMouseSmoothing(prefs.getFloat("mouse_smoothing", 0.0f));
         invertX = prefs.getBoolean("invert_x", false);
         invertY = prefs.getBoolean("invert_y", false);
+        applyMouseOptions();
     }
 
     public static synchronized void save(Context context) {
@@ -127,6 +132,8 @@ public final class KeyboardMouseSettings {
         editor.putBoolean("enabled", enabled);
         editor.putFloat("sensitivity_x", sensitivityX);
         editor.putFloat("sensitivity_y", sensitivityY);
+        editor.putFloat("mouse_max_delta", maxMouseDelta);
+        editor.putFloat("mouse_smoothing", mouseSmoothing);
         editor.putBoolean("invert_x", invertX);
         editor.putBoolean("invert_y", invertY);
         editor.apply();
@@ -323,6 +330,7 @@ public final class KeyboardMouseSettings {
             synchronized (KeyboardMouseSettings.class) {
                 enabled = checked;
                 GameThread.INSTANCE.onPcInputEnabled(checked);
+                InputHandler.INSTANCE.onPcInputEnabledChanged();
             }
         });
 
@@ -368,6 +376,25 @@ public final class KeyboardMouseSettings {
         content.addView(invertYBox);
         invertYBox.setOnCheckedChangeListener((button, checked) -> invertY = checked);
 
+        addSectionHeader(owner, content, "MOUSE RESPONSE");
+        TextView maxDeltaLabel = new TextView(owner);
+        maxDeltaLabel.setTextColor(0xFFE7EAF0);
+        content.addView(maxDeltaLabel);
+        SeekBar maxDeltaSeekBar = new SeekBar(owner);
+        maxDeltaSeekBar.setMax(499);
+        maxDeltaSeekBar.setProgress(maxDeltaToProgress(maxMouseDelta));
+        content.addView(maxDeltaSeekBar, verticalMargins(owner, 0, 5));
+        maxDeltaSeekBar.setOnSeekBarChangeListener(mouseOptionListener(true, maxDeltaLabel));
+
+        TextView smoothingLabel = new TextView(owner);
+        smoothingLabel.setTextColor(0xFFE7EAF0);
+        content.addView(smoothingLabel);
+        SeekBar smoothingSeekBar = new SeekBar(owner);
+        smoothingSeekBar.setMax(90);
+        smoothingSeekBar.setProgress(Math.round(mouseSmoothing * 100.0f));
+        content.addView(smoothingSeekBar, verticalMargins(owner, 0, 5));
+        smoothingSeekBar.setOnSeekBarChangeListener(mouseOptionListener(false, smoothingLabel));
+
         TextView receivedState = new TextView(owner);
         receivedState.setTextColor(0xFFADB6C5);
         receivedState.setText("Received input: none");
@@ -377,6 +404,8 @@ public final class KeyboardMouseSettings {
         updateBindingButtons();
         updateSensitivityLabel(xLabel, sensitivityX, "Mouse X sensitivity");
         updateSensitivityLabel(yLabel, sensitivityY, "Mouse Y sensitivity");
+        updateMouseOptionLabel(maxDeltaLabel, maxMouseDelta, true);
+        updateMouseOptionLabel(smoothingLabel, mouseSmoothing, false);
 
         LinearLayout actions = new LinearLayout(owner);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -387,14 +416,20 @@ public final class KeyboardMouseSettings {
                 enabled = true;
                 sensitivityX = 1.0f;
                 sensitivityY = 1.0f;
+                maxMouseDelta = 120.0f;
+                mouseSmoothing = 0.0f;
                 invertX = false;
                 invertY = false;
                 enableBox.setChecked(true);
                 xSensitivity.setProgress(sensitivityToProgress(sensitivityX));
                 ySensitivity.setProgress(sensitivityToProgress(sensitivityY));
+                maxDeltaSeekBar.setProgress(maxDeltaToProgress(maxMouseDelta));
+                smoothingSeekBar.setProgress(Math.round(mouseSmoothing * 100.0f));
                 invertXBox.setChecked(false);
                 invertYBox.setChecked(false);
                 GameThread.INSTANCE.onPcInputEnabled(true);
+                InputHandler.INSTANCE.onPcInputEnabledChanged();
+                applyMouseOptions();
                 updateBindingButtons();
             }
         });
@@ -404,9 +439,13 @@ public final class KeyboardMouseSettings {
             enableBox.setChecked(enabled);
             xSensitivity.setProgress(sensitivityToProgress(sensitivityX));
             ySensitivity.setProgress(sensitivityToProgress(sensitivityY));
+            maxDeltaSeekBar.setProgress(maxDeltaToProgress(maxMouseDelta));
+            smoothingSeekBar.setProgress(Math.round(mouseSmoothing * 100.0f));
             invertXBox.setChecked(invertX);
             invertYBox.setChecked(invertY);
             GameThread.INSTANCE.onPcInputEnabled(enabled);
+            InputHandler.INSTANCE.onPcInputEnabledChanged();
+            applyMouseOptions();
             updateBindingButtons();
         });
         Button saveButton = makeActionButton(owner, "Save");
@@ -587,6 +626,57 @@ public final class KeyboardMouseSettings {
         return 0.1f + progress / 100.0f;
     }
 
+    private static SeekBar.OnSeekBarChangeListener mouseOptionListener(
+            boolean limit, TextView label) {
+        return new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                synchronized (KeyboardMouseSettings.class) {
+                    if (limit) {
+                        maxMouseDelta = progress + 1.0f;
+                    } else {
+                        mouseSmoothing = progress / 100.0f;
+                    }
+                    applyMouseOptions();
+                    updateMouseOptionLabel(
+                            label, limit ? maxMouseDelta : mouseSmoothing, limit);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        };
+    }
+
+    private static synchronized void applyMouseOptions() {
+        KeyboardMouseBridge.nativeSetMouseOptions(maxMouseDelta, mouseSmoothing);
+    }
+
+    private static int maxDeltaToProgress(float value) {
+        return Math.max(0, Math.min(499, Math.round(value) - 1));
+    }
+
+    private static float normalizeMaxMouseDelta(float value) {
+        if (!Float.isFinite(value)) {
+            Log.w(TAG, "Ignoring non-finite persisted mouse delta limit");
+            return 120.0f;
+        }
+        return Math.max(1.0f, Math.min(500.0f, value));
+    }
+
+    private static float normalizeMouseSmoothing(float value) {
+        if (!Float.isFinite(value)) {
+            Log.w(TAG, "Ignoring non-finite persisted mouse smoothing");
+            return 0.0f;
+        }
+        return Math.max(0.0f, Math.min(0.9f, value));
+    }
+
     private static float normalizeSensitivity(float value) {
         if (!Float.isFinite(value)) {
             Log.w(TAG, "Ignoring non-finite persisted mouse sensitivity");
@@ -597,6 +687,14 @@ public final class KeyboardMouseSettings {
 
     private static void updateSensitivityLabel(TextView label, float value, String title) {
         label.setText(title + ": " + String.format(java.util.Locale.ROOT, "%.1f", value));
+    }
+
+    private static void updateMouseOptionLabel(TextView label, float value, boolean limit) {
+        if (limit) {
+            label.setText("Max mouse delta per frame: " + Math.round(value));
+        } else {
+            label.setText("Mouse smoothing: " + Math.round(value * 100.0f) + "%");
+        }
     }
 
     private static void updateBindingButtons() {
