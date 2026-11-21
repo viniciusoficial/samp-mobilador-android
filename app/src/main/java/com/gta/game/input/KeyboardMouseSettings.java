@@ -202,6 +202,11 @@ public final class KeyboardMouseSettings {
         updateStateView();
     }
 
+    public static synchronized void clearPressedStates() {
+        pressedKeys.clear();
+        updateStateView();
+    }
+
     public static synchronized boolean isCapturingBinding() {
         return pendingCapture >= 0;
     }

@@ -423,6 +423,7 @@ public class InputHandler implements GameViewHandler {
             gameView.releasePointerCapture();
             pointerCaptured = false;
         }
+        releasePcKeys();
     }
 
     @Override
@@ -437,10 +438,11 @@ public class InputHandler implements GameViewHandler {
     }
 
     public void onPointerCaptureChanged(boolean captured) {
+        if (pointerCaptured == captured) {
+            return;
+        }
         pointerCaptured = captured;
         hasLastMousePosition = false;
-        // The game, not only Android, must enter/leave relative mouse mode.
-        // This is the native capture protocol used by the working Nezuko build.
         GameNative.implOnCaptureStatusChanged(captured);
         if (gameView != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             gameView.setPointerIcon(PointerIcon.getSystemIcon(gameView.getContext(),
@@ -448,9 +450,6 @@ public class InputHandler implements GameViewHandler {
         }
         if (!captured) {
             releaseMouseButtons();
-            GameNative.implOnCaptureStatusChanged(false);
-        } else {
-            GameNative.implOnCaptureStatusChanged(true);
         }
     }
 
@@ -490,14 +489,12 @@ public class InputHandler implements GameViewHandler {
 
         if (action == MotionEvent.ACTION_HOVER_ENTER) {
             hasLastMousePosition = false;
-            GameNative.implOnCaptureStatusChanged(true);
             logMouseEvent(event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
             return true;
         }
         if (action == MotionEvent.ACTION_HOVER_EXIT) {
             hasLastMousePosition = false;
             releaseMouseButtons();
-            GameNative.implOnCaptureStatusChanged(false);
             logMouseEvent(event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
             return true;
         }
@@ -542,12 +539,14 @@ public class InputHandler implements GameViewHandler {
             boolean down = action == MotionEvent.ACTION_BUTTON_PRESS ||
                     action == MotionEvent.ACTION_DOWN;
             if (button == MotionEvent.BUTTON_PRIMARY || button == MotionEvent.BUTTON_SECONDARY) {
-                updatePressedMouseButtons(button, down);
-                KeyboardMouseSettings.setMouseState(button, down);
-                if (KeyboardMouseSettings.isEnabled()) {
-                    // O mapeamento físico é fixo no modo PC: esquerdo=FIRE e
-                    // direito=AIM. Ele não pode depender de um binding salvo.
-                    GameNative.implOnNativeMouseButton(mouseButtonIndex(button), down);
+                boolean changed = updatePressedMouseButtons(button, down);
+                if (changed) {
+                    KeyboardMouseSettings.setMouseState(button, down);
+                    if (KeyboardMouseSettings.isEnabled()) {
+                        // O mapeamento físico é fixo no modo PC: esquerdo=FIRE e
+                        // direito=AIM. Ele não pode depender de um binding salvo.
+                        GameNative.implOnNativeMouseButton(mouseButtonIndex(button), down);
+                    }
                 }
                 logMouseEvent(
                         event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
@@ -558,7 +557,6 @@ public class InputHandler implements GameViewHandler {
         if (action == MotionEvent.ACTION_CANCEL) {
             releaseMouseButtons();
             hasLastMousePosition = false;
-            GameNative.implOnCaptureStatusChanged(false);
             logMouseEvent(event, source, deviceSources, x, y, 0.0f, 0.0f, capturedEvent);
             return true;
         }
@@ -639,15 +637,20 @@ public class InputHandler implements GameViewHandler {
         return button;
     }
 
-    private void updatePressedMouseButtons(int button, boolean down) {
+    private boolean updatePressedMouseButtons(int button, boolean down) {
         if (button != MotionEvent.BUTTON_PRIMARY && button != MotionEvent.BUTTON_SECONDARY) {
-            return;
+            return false;
+        }
+        boolean currentlyPressed = (pressedMouseButtons & button) != 0;
+        if (currentlyPressed == down) {
+            return false;
         }
         if (down) {
             pressedMouseButtons |= button;
         } else {
             pressedMouseButtons &= ~button;
         }
+        return true;
     }
 
     private void releaseMouseButtons() {
@@ -803,6 +806,7 @@ public class InputHandler implements GameViewHandler {
         for (int action = 0; action < KeyboardMouseSettings.ACTION_COUNT; action++) {
             GameThread.INSTANCE.onPcInputAction(action, false);
         }
+        KeyboardMouseSettings.clearPressedStates();
     }
 
     // -----------------------------------------------------------------------

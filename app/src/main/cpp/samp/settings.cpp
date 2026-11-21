@@ -9,6 +9,7 @@ extern CGame *pGame;
 
 CSettings::CSettings()
 {
+	m_Settings = stSettings{};
 	Log("Loading settings..");	
 
 	char buff[0x7F];
@@ -18,8 +19,11 @@ CSettings::CSettings()
 
 	if(reader.ParseError() < 0)
 	{
-		Log("Error: can't load %s", buff);
-		std::terminate();
+		Log("Error: can't load %s; using defaults", buff);
+		m_Settings.bOnline = true;
+		m_Settings.iFPSCount = 60;
+		m_Settings.iDialog = true;
+		m_Settings.iFirstPerson = true;
 		return;
 	}
 
@@ -42,7 +46,7 @@ CSettings::CSettings()
 	m_Settings.bOnline = reader.GetBoolean("debug", "online", true);
 
 	// gui
-	length = reader.Get("gui", "Font", "arial.ttf").copy(m_Settings.szFont, MAX_SETTINGS_STRING);
+	length = reader.Get("gui", "Font", "arial.ttf").copy(m_Settings.szFont, sizeof(m_Settings.szFont) - 1);
 	m_Settings.szFont[length] = '\0';
 	m_Settings.fFontSize = reader.GetReal("gui", "FontSize", 30.0f);
 	m_Settings.iFontOutline = reader.GetInteger("gui", "FontOutline", 2);

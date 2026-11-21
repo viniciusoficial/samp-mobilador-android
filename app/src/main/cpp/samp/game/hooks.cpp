@@ -1386,8 +1386,14 @@ void NvUtilInit_hook() {
 
     LOGI("Storage located at %s", g_pszStorage);
     NvUtilInit();
-    ApplyFPSPatch(120);
     ReadSettingFile();
+    uint8_t fpsLimit = 60;
+    if (pSettings != nullptr)
+    {
+        const int configuredFPS = pSettings->Get().iFPSCount;
+        fpsLimit = static_cast<uint8_t>(std::clamp(configuredFPS, 30, 144));
+    }
+    ApplyFPSPatch(fpsLimit);
 
 }
 

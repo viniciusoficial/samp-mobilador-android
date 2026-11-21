@@ -957,11 +957,9 @@ void CGame::Process() {
 
         // CInterestingEvents::ScanForNearbyEntities
 
-        // A CCam consome Alpha/Beta dentro de CCamera::Process(). O delta
-        // próprio precisa entrar antes dessa chamada; aplicar depois deixa a
-        // matriz já construída e não altera a imagem nesta build.
         NativeCameraMouseApply(TheCamera);
         ((void (*)(CCamera*)) (g_libGTASA + 0x470E98))(&TheCamera); // CCamera::Process()
+        NativeCameraMouseReapply(TheCamera);
 
         // CCullZones::Update() менты не могут найти?
         CHook::CallFunction<void>(g_libGTASA+0x3EB724);// CGameLogic::Update()

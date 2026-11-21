@@ -76,6 +76,7 @@ void PcInputApplyMouse();
 void PcInputSetMouseOptions(float maxDelta, float smoothing);
 void PcInputSetMouseButton(int button, int action, bool pressed);
 void PcInputMouseLeave();
+void PcInputReleaseMouseButtons();
 int16_t PcInputApplyMouseLookX(int16_t current);
 int16_t PcInputApplyMouseLookY(int16_t current);
 void PcInputOpenChat();

@@ -14,6 +14,8 @@
 #include "game/CrossHair.h"
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
+#include <cstdio>
+#include <mutex>
 
 // voice
 #include "voice/Plugin.h"
@@ -388,18 +390,11 @@ uint32_t GetTickCount()
 
 void Log(const char* fmt, ...)
 {
-	char buffer[0xFF];
+	char buffer[1024];
 	static FILE* flLog = nullptr;
-	const char* pszStorage = g_pszStorage;
-
-
-	if (flLog == nullptr && pszStorage != nullptr)
-	{
-		sprintf(buffer, "/storage/emulated/0/GTA/logcat.txt");
-		flLog = fopen(buffer, "a");
-	}
-
-	memset(buffer, 0, sizeof(buffer));
+	static std::mutex logMutex;
+	static uint32_t logWriteCount = 0;
+	static char fileBuffer[64 * 1024];
 
 	va_list arg;
 	va_start(arg, fmt);
@@ -409,11 +404,33 @@ void Log(const char* fmt, ...)
 	LOGI("%s", buffer);
 	firebase::crashlytics::Log(buffer);
 
-	if (flLog == nullptr) return;
-	fprintf(flLog, "%s\n", buffer);
-	fflush(flLog);
+	std::lock_guard<std::mutex> lock(logMutex);
+	if (flLog == nullptr)
+	{
+		flLog = fopen("/storage/emulated/0/GTA/logcat.txt", "a");
+		if (flLog != nullptr)
+			setvbuf(flLog, fileBuffer, _IOFBF, sizeof(fileBuffer));
+	}
+	if (flLog == nullptr)
+		return;
 
-	return;
+	fseek(flLog, 0, SEEK_END);
+	const long logSize = ftell(flLog);
+	if (logSize >= 8 * 1024 * 1024)
+	{
+		fclose(flLog);
+		flLog = fopen("/storage/emulated/0/GTA/logcat.txt", "w");
+		if (flLog != nullptr)
+			setvbuf(flLog, fileBuffer, _IOFBF, sizeof(fileBuffer));
+	}
+	if (flLog == nullptr)
+		return;
+	fprintf(flLog, "%s\n", buffer);
+	if (++logWriteCount >= 64)
+	{
+		fflush(flLog);
+		logWriteCount = 0;
+	}
 }
 
 void LogVoice(const char* fmt, ...)

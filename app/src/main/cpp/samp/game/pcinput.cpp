@@ -13,7 +13,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
-#include <dlfcn.h>
 #include <mutex>
 
 extern bool bNeedEnterVehicle;
@@ -24,40 +23,9 @@ extern CNetGame* pNetGame;
 
 namespace
 {
-    using NativeMouseEventHandler = int (*)(int, void*);
-    using PointerLockFn = void (*)(bool);
-    using PointerVisibilityFn = void (*)(int);
-
-    void* GetGameLibrary()
-    {
-        static void* handle = nullptr;
-        if (!handle)
-            handle = dlopen("libGame.so", RTLD_NOW | RTLD_NOLOAD);
-        return handle;
-    }
-
-    void SendNativeMouseButton(int button, bool pressed)
-    {
-        void* game = GetGameLibrary();
-        if (!game)
-            return;
-        static NativeMouseEventHandler handler = nullptr;
-        if (!handler)
-            handler = reinterpret_cast<NativeMouseEventHandler>(
-                dlsym(game, "_Z19RsMouseEventHandler7RsEventPv"));
-        if (!handler)
-            return;
-        const int event = button == 0 ? (pressed ? 10 : 11) :
-            (button == 1 ? (pressed ? 12 : 13) : (pressed ? 14 : 15));
-        handler(event, nullptr);
-    }
-}
-
-namespace
-{
     constexpr int kPcActionCount = static_cast<int>(PcInputAction::COUNT);
-    std::array<bool, kPcActionCount> g_pressed{};
-    std::array<bool, kPcActionCount> g_justPressed{};
+    std::array<std::atomic<bool>, kPcActionCount> g_pressed{};
+    std::array<std::atomic<bool>, kPcActionCount> g_justPressed{};
     std::atomic<bool> g_inputEnabled{true};
     bool g_driverVehicleEntryRequested = false;
     int g_weaponWheelSteps = 0;
@@ -72,6 +40,8 @@ namespace
     std::atomic<float> g_mouseSmoothing{0.0f};
     std::atomic<int> g_primaryMouseAction{-1};
     std::atomic<int> g_secondaryMouseAction{-1};
+    std::atomic<bool> g_primaryMousePressed{false};
+    std::atomic<bool> g_secondaryMousePressed{false};
     std::atomic<uint32_t> g_mouseReceivedCount{0};
     std::atomic<uint32_t> g_mouseAppliedCount{0};
     std::atomic<uint32_t> g_cameraAppliedCount{0};
@@ -126,17 +96,17 @@ bool PcInputIsPressed(PcInputAction action)
     const int index = static_cast<int>(action);
     if (!g_inputEnabled.load() || !IsActionIndexValid(index))
         return false;
-    return g_pressed[index] || g_primaryMouseAction.load() == index ||
+    return g_pressed[index].load(std::memory_order_acquire) ||
+           g_primaryMouseAction.load() == index ||
            g_secondaryMouseAction.load() == index;
 }
 
 bool PcInputConsumePress(PcInputAction action)
 {
     const int index = static_cast<int>(action);
-    if (!g_inputEnabled || !IsActionIndexValid(index) || !g_justPressed[index])
+    if (!g_inputEnabled || !IsActionIndexValid(index) ||
+        !g_justPressed[index].exchange(false, std::memory_order_acq_rel))
         return false;
-
-    g_justPressed[index] = false;
     return true;
 }
 
@@ -160,13 +130,18 @@ void PcInputSetEnabled(bool enabled)
     g_frameMouseDeltaY = 0.0f;
     g_smoothedMouseDeltaX = 0.0f;
     g_smoothedMouseDeltaY = 0.0f;
+    NativeCameraMouseReset();
     g_primaryMouseAction.store(-1);
     g_secondaryMouseAction.store(-1);
+    g_primaryMousePressed.store(false);
+    g_secondaryMousePressed.store(false);
 
     if (!enabled)
     {
-        g_pressed.fill(false);
-        g_justPressed.fill(false);
+        for (std::atomic<bool>& state : g_pressed)
+            state.store(false, std::memory_order_release);
+        for (std::atomic<bool>& state : g_justPressed)
+            state.store(false, std::memory_order_release);
         g_driverVehicleEntryRequested = false;
     }
     Log("PC input C++: enabled=%d", enabled);
@@ -188,10 +163,10 @@ void PcInputSetAction(int action, bool pressed)
     if (!g_inputEnabled)
         pressed = false;
 
-    const bool wasPressed = g_pressed[action];
-    g_pressed[action] = pressed;
+    const bool wasPressed = g_pressed[action].load(std::memory_order_acquire);
+    g_pressed[action].store(pressed, std::memory_order_release);
     if (pressed && !wasPressed)
-        g_justPressed[action] = true;
+        g_justPressed[action].store(true, std::memory_order_release);
 
     if (wasPressed != pressed)
         Log("PC input C++: action=%d pressed=%d", action, pressed);
@@ -258,8 +233,6 @@ void PcInputAddMouseDelta(float dx, float dy)
     if (!g_inputEnabled.load() || g_nativeInterfaceActive.load())
         return;
 
-    // A entrada do mouse não passa mais por CPad::UpdateMouse, vecMouseDelta
-    // ou LookAround*. Ela segue diretamente para a câmera real no loop do jogo.
     NativeCameraMouseEnqueue(dx, dy);
 }
 
@@ -299,16 +272,10 @@ void PcInputApplyMouse()
         return;
     }
 
-    const float maxDelta = g_mouseMaxDelta.load();
-    const float smoothing = g_mouseSmoothing.load();
-    dx = std::clamp(dx, -maxDelta, maxDelta);
-    dy = std::clamp(dy, -maxDelta, maxDelta);
-    g_smoothedMouseDeltaX = dx * (1.0f - smoothing) +
-                            g_smoothedMouseDeltaX * smoothing;
-    g_smoothedMouseDeltaY = dy * (1.0f - smoothing) +
-                            g_smoothedMouseDeltaY * smoothing;
-    g_frameMouseDeltaX = g_smoothedMouseDeltaX;
-    g_frameMouseDeltaY = g_smoothedMouseDeltaY;
+    g_smoothedMouseDeltaX = 0.0f;
+    g_smoothedMouseDeltaY = 0.0f;
+    g_frameMouseDeltaX = dx;
+    g_frameMouseDeltaY = dy;
 }
 
 void PcInputSetMouseOptions(float maxDelta, float smoothing)
@@ -319,7 +286,7 @@ void PcInputSetMouseOptions(float maxDelta, float smoothing)
         return;
     }
     g_mouseMaxDelta.store(std::clamp(maxDelta, 1.0f, 500.0f));
-    g_mouseSmoothing.store(std::clamp(smoothing, 0.0f, 0.9f));
+    g_mouseSmoothing.store(0.0f);
 }
 
 void PcInputSetMouseButton(int button, int action, bool pressed)
@@ -336,9 +303,26 @@ void PcInputSetMouseButton(int button, int action, bool pressed)
     {
         pressed = false;
     }
+
+    std::atomic<bool>* mousePressed = (button == 1)
+        ? &g_primaryMousePressed
+        : &g_secondaryMousePressed;
+    const bool changed = mousePressed->exchange(pressed) != pressed;
     mouseAction->store(pressed ? action : -1);
+    if (!changed)
+        return;
     Log("[GAME-MOUSE] button=%d action=%d pressed=%d",
         button, action, pressed);
+}
+
+void PcInputReleaseMouseButtons()
+{
+    g_primaryMousePressed.store(false);
+    g_secondaryMousePressed.store(false);
+    g_primaryMouseAction.store(-1);
+    g_secondaryMouseAction.store(-1);
+    PcInputSetAction(static_cast<int>(PcInputAction::FIRE), false);
+    PcInputSetAction(static_cast<int>(PcInputAction::AIM), false);
 }
 
 void PcInputMouseLeave()
@@ -350,6 +334,8 @@ void PcInputMouseLeave()
     }
     g_primaryMouseAction.store(-1);
     g_secondaryMouseAction.store(-1);
+    g_primaryMousePressed.store(false);
+    g_secondaryMousePressed.store(false);
 }
 
 int16_t PcInputApplyMouseLookX(int16_t current)
@@ -489,6 +475,13 @@ void PcInputRefreshNativeInterfaceState()
         g_smoothedMouseDeltaY = 0.0f;
         g_primaryMouseAction.store(-1);
         g_secondaryMouseAction.store(-1);
+        g_primaryMousePressed.store(false);
+        g_secondaryMousePressed.store(false);
+        g_pressed[static_cast<int>(PcInputAction::FIRE)].store(false, std::memory_order_release);
+        g_pressed[static_cast<int>(PcInputAction::AIM)].store(false, std::memory_order_release);
+        g_justPressed[static_cast<int>(PcInputAction::FIRE)].store(false, std::memory_order_release);
+        g_justPressed[static_cast<int>(PcInputAction::AIM)].store(false, std::memory_order_release);
+        NativeCameraMouseReset();
     }
 }
 
@@ -528,10 +521,7 @@ extern "C"
             !g_inputEnabled.load() || g_nativeInterfaceActive.load())
             return;
 
-        // Independent camera path: the Java delta is accumulated here and is
-        // consumed by CPad::UpdateMouse_hook, then by the real GTA look
-        // readers. Do not write CPad::vecMouseDelta, which belongs to the
-        // platform mouse path and bypasses our camera consumer.
+        // Consume Java relative deltas only through the direct CCam accumulator.
         PcInputAddMouseDelta(dx, dy);
     }
 
@@ -551,9 +541,15 @@ extern "C"
         // mouse não depende do menu de bindings. O mapeamento PC é direto:
         // botão esquerdo dispara e direito mira.
         if (button == 1)
+        {
+            g_primaryMousePressed.store(true);
             PcInputSetAction(static_cast<int>(PcInputAction::FIRE), true);
+        }
         else if (button == 2)
+        {
+            g_secondaryMousePressed.store(true);
             PcInputSetAction(static_cast<int>(PcInputAction::AIM), true);
+        }
     }
 
     JNIEXPORT void JNICALL
@@ -562,15 +558,25 @@ extern "C"
     {
         Log("[JNI-MOUSE] buttonUp button=%d", button);
         if (button == 1)
+        {
+            g_primaryMousePressed.store(false);
+            g_primaryMouseAction.store(-1);
             PcInputSetAction(static_cast<int>(PcInputAction::FIRE), false);
+        }
         else if (button == 2)
+        {
+            g_secondaryMousePressed.store(false);
+            g_secondaryMouseAction.store(-1);
             PcInputSetAction(static_cast<int>(PcInputAction::AIM), false);
+        }
     }
     JNIEXPORT void JNICALL
     Java_com_gta_game_input_KeyboardMouseBridge_nativeSetCapture(
         JNIEnv*, jclass, jboolean captured)
     {
         const bool active = captured == JNI_TRUE;
+        if (!active)
+            PcInputReleaseMouseButtons();
         // A captura Android já é mantida pelo GameView. Não chamar
         // OS_PointerLock/RsMouseSetVisibility: nesta build eles reentram no
         // estado de ponteiro, alternam capture 1/0 e liberam os botões.
