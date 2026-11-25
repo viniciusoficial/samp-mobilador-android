@@ -1,0 +1,88 @@
+#pragma once
+#include "game/game.h"
+#include "game/util.h"
+
+#include "main.h"
+
+#include "settings.h"
+#include "util/CUtil.h"
+
+
+extern CSettings* pSettings;
+
+class VoiceButton : public Button
+{
+public:
+	VoiceButton() : Button("TALK", UISettings::fontSize() / 2) {
+		m_recording = false;
+		/* 5:3 aspect ratio */
+		//m_texture_micro_on = (RwTexture*)CUtil::LoadTextureFromDB("samp", "icon_micro_on");
+		//m_texture_micro_off = (RwTexture*)CUtil::LoadTextureFromDB("samp", "icon_micro_off");
+		m_texture_micro_on = (RwTexture*)CUtil::LoadTextureFromDB("samp", "micro_active"); //default
+		//if (Server == 40) m_texture_micro_on = (RwTexture*)CUtil::LoadTextureFromDB("samp", "voiceactive");
+		//if (Server == 40) m_texture_micro_off = (RwTexture*)CUtil::LoadTextureFromDB("samp", "voicepassive");
+		m_texture_micro_off = (RwTexture*)CUtil::LoadTextureFromDB("samp", "micro_passive"); //default
+		//if (Server == 13) m_texture_micro_off = (RwTexture*)CUtil::LoadTextureFromDB("samp", "icon_micro_on");
+		//if (Server == 13) m_texture_micro_on = (RwTexture*)CUtil::LoadTextureFromDB("samp", "icon_micro_off");
+	}
+
+	virtual void draw(ImGuiRenderer* renderer) override
+	{
+		if (!renderer || !pSettings || !pSettings->Get().bVoiceChatEnable) return;
+
+		if (countdown > 0 && recording() == 1) countdown--;
+		if (countdown == 0 && recording() == 1) setRecording(0);
+
+		RwTexture* texture = recording() ? m_texture_micro_on : m_texture_micro_off;
+		if (texture && texture->raster)
+		{
+			renderer->drawImage(absolutePosition(), absolutePosition() + size(), texture->raster);
+		}
+		else
+		{
+			// Os assets podem não existir na instalação inicial. Nunca desreferenciar
+			// uma textura nula: manter o botão visível com um fallback simples.
+			const ImColor fallback = recording()
+				? ImColor(220, 70, 70, 220)
+				: ImColor(90, 90, 90, 190);
+			renderer->drawRect(absolutePosition(), absolutePosition() + size(),
+				fallback, true, 6.0f);
+		}
+
+		//MyLog2("%f,%f",absolutePosition(), absolutePosition() + size());
+		//MyLog2("countdown %d", countdown);
+		//MyLog2("recording %d", recording());
+		//MyLog2("press %d", press);
+		
+	}
+
+	void touchPopEvent() override
+	{
+		countdown = 500;
+		setRecording(0);
+	}
+
+	void touchPushEvent() override
+	{
+			//setRecording(recording() ^ 1);
+		setRecording(1);
+		countdown = 500;
+	}
+
+	void setRecording(bool recording) 
+	{ 
+		if (recording == 1) countdown = 200;
+		m_recording = recording;
+		this->setCaptionColor(m_recording ? ImColor(1.0f, 0.0f, 0.0f) : ImColor(1.0f, 1.0f, 1.0f));
+	}
+
+	bool recording() const { return m_recording; }
+
+private:
+	bool m_recording;
+	RwTexture* m_texture_micro_on;
+	RwTexture* m_texture_micro_off;
+	//int countdown = 1000;
+public:
+	int countdown = 1000;
+};
