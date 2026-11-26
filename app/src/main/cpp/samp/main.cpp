@@ -205,9 +205,11 @@ void DoInitStuff()
 		pAudioStream = new CAudioStream();
 		pAudioStream->Initialize();
 
-		pUI->splashscreen()->setVisible(false);
-		pUI->chat()->setVisible(true);
-		pUI->buttonpanel()->setVisible(true);
+			pUI->splashscreen()->setVisible(false);
+			pUI->chat()->setVisible(true);
+			// O InputHandler já detecta teclado/mouse físico antes desta etapa.
+			// Não reexibir o painel de atalhos quando o modo externo estiver ativo.
+			pUI->buttonpanel()->setVisible(!PcInputIsExternalInputPresent());
 
 		pGame->Initialize();
 		pGame->SetMaxStats();

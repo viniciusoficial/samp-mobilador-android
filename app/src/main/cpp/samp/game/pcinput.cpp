@@ -211,6 +211,15 @@ bool PcInputIsEnabledForTouch()
 void PcInputSetExternalInputPresent(bool present)
 {
     const bool wasPresent = g_externalInputPresent.exchange(present);
+
+    // O painel de atalhos (TAB, ESC, H, Y, G etc.) pertence à UI do SA-MP,
+    // não ao diálogo/chat. Sua visibilidade acompanha exclusivamente a
+    // presença física do teclado/mouse e é restaurada ao desconectar.
+    if (pUI != nullptr && pUI->buttonpanel() != nullptr)
+    {
+        pUI->buttonpanel()->setVisible(!present);
+    }
+
     if (wasPresent && !present)
     {
         for (int i = 0; i < kActionCount; ++i)
