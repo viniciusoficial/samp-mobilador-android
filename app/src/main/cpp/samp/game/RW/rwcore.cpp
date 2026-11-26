@@ -23,7 +23,58 @@ RwFrame* RwFrameCreate() {
 }
 
 RwCamera* RwCameraClear(RwCamera* camera, RwRGBA* colour, RwInt32 clearMode) {
-    return CHook::CallFunction<RwCamera*>(g_libGTASA + 0x26D1E8, camera, colour, clearMode);
+    if (!camera) {
+        return nullptr;
+    }
+
+    using RwCameraClearFn = RwCamera*(*)(RwCamera*, RwRGBA*, RwInt32);
+    static bool s_resolved = false;
+    static RwCameraClearFn s_rwCameraClear = nullptr;
+
+    if (!s_resolved) {
+        s_resolved = true;
+        void* handle = CHook::lib ? CHook::lib : dlopen("libGame.so", RTLD_LAZY | RTLD_NOLOAD);
+        const char* const candidates[] = {
+            "_Z13RwCameraClearP8RwCameraP6RwRGBAi",
+            "_Z13RwCameraClearP8RwCameraPK6RwRGBAi",
+            "_Z13RwCameraClearP8RwCameraP9RwRGBATagi",
+            "_Z13RwCameraClearP8RwCameraP6RwRGBAl",
+            "_Z13RwCameraClearP8RwCameraP6RwRGBA17RwCameraClearMode",
+            "RwCameraClear"
+        };
+        for (const char* sym : candidates) {
+            void* fn = handle ? dlsym(handle, sym) : nullptr;
+            if (!fn) {
+                fn = dlsym(RTLD_DEFAULT, sym);
+            }
+            if (fn) {
+                s_rwCameraClear = reinterpret_cast<RwCameraClearFn>(fn);
+                Log("RwCameraClear resolved via symbol: %s (%p)", sym, fn);
+                break;
+            }
+        }
+        if (!s_rwCameraClear) {
+            Log("RwCameraClear symbol not found in libGame.so, using RwRasterClear fallback");
+        }
+    }
+
+    if (s_rwCameraClear) {
+        return s_rwCameraClear(camera, colour, clearMode);
+    }
+
+    if ((clearMode & rwCAMERACLEARIMAGE) && camera->frameBuffer && colour &&
+        RwRasterPushContext && RwRasterClear && RwRasterPopContext) {
+        RwInt32 pixel = static_cast<RwInt32>(
+            (static_cast<uint32_t>(colour->alpha) << 24) |
+            (static_cast<uint32_t>(colour->blue) << 16) |
+            (static_cast<uint32_t>(colour->green) << 8) |
+            static_cast<uint32_t>(colour->red));
+        if (RwRasterPushContext(camera->frameBuffer)) {
+            RwRasterClear(pixel);
+            RwRasterPopContext();
+        }
+    }
+    return camera;
 }
 
 RwCamera* RwCameraSetNearClipPlane(RwCamera* camera, RwReal nearClip) {
