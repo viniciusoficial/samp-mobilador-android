@@ -6,6 +6,8 @@ public final class KeyboardMouseBridge {
 
     public static native void nativeSetEnabled(boolean enabled);
 
+    public static native void nativeSetAspectRatio(float aspectRatio);
+
     public static native void nativeSetExternalInputPresent(boolean present);
 
     public static native void nativeSetAction(int action, boolean pressed);

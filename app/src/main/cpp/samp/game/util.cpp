@@ -1,6 +1,7 @@
 #include "../main.h"
 #include "game.h"
 #include "RW/RenderWare.h"
+#include "sprite2d.h"
 #include <cmath>
 #include "../net/netgame.h"
 #include "World.h"
@@ -2298,12 +2299,15 @@ void DrawTexture(uintptr_t texture, CRect* rect, uint32_t dwColor)
 
 void DrawTextureUV(uintptr_t texture, CRect* rect, uint32_t dwColor, float *uv)
 {
-	if (texture)
+	if (texture && rect && uv)
 	{
 		RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERLINEAR);
-		// CSprite2d::Draw(CRect  const& posn, CRGBA  const& color, float u1, float v1, float u2, float v2, float u3, float v3, float u4, float v4);
-		((void(*)(uintptr_t, CRect*, uint32_t*, float, float, float, float, float, float, float, float))
-			(g_libGTASA + 0x5F7908))(texture, rect, &dwColor, uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], uv[6], uv[7]);
+		CSprite2d sprite{};
+		sprite.m_pTexture = reinterpret_cast<RwTexture*>(texture);
+		// CSprite2d::Draw(CRect const& posn, CRGBA const& color, float u1, float v1, float u2, float v2, float u3, float v3, float u4, float v4);
+		((void(*)(CSprite2d*, CRect*, uint32_t*, float, float, float, float, float, float, float, float))
+			(g_libGTASA + 0x5F7908))(&sprite, rect, &dwColor, uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], uv[6], uv[7]);
+		sprite.m_pTexture = nullptr;
 	}
 }
 

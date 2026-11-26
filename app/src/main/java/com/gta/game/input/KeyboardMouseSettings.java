@@ -113,6 +113,13 @@ public final class KeyboardMouseSettings {
     private static boolean fastWeaponSwitch = true;
     private static boolean numberSlotKeys = true;
     private static boolean vehicleAutoCenter = false;
+    private static final String[] ASPECT_RATIO_LABELS = {
+            "16:9 (Normal)", "15:9", "5:4", "4:3", "16:10"
+    };
+    private static final float[] ASPECT_RATIO_VALUES = {
+            16.0f / 9.0f, 15.0f / 9.0f, 5.0f / 4.0f, 4.0f / 3.0f, 16.0f / 10.0f
+    };
+    private static int aspectRatioIndex = 0;
 
     static {
         System.arraycopy(DEFAULT_KEYS, 0, bindings, 0, ACTION_COUNT);
@@ -154,6 +161,8 @@ public final class KeyboardMouseSettings {
         fastWeaponSwitch = prefs.getBoolean("fast_weapon_switch", true);
         numberSlotKeys = prefs.getBoolean("number_slot_keys", true);
         vehicleAutoCenter = prefs.getBoolean("vehicle_auto_center", false);
+        aspectRatioIndex = Math.max(0, Math.min(ASPECT_RATIO_VALUES.length - 1,
+                prefs.getInt("aspect_ratio", 0)));
         showMouseDiagnostics = prefs.getBoolean("show_diagnostics", false);
         syncNativeConfig();
     }
@@ -180,6 +189,7 @@ public final class KeyboardMouseSettings {
         editor.putBoolean("fast_weapon_switch", fastWeaponSwitch);
         editor.putBoolean("number_slot_keys", numberSlotKeys);
         editor.putBoolean("vehicle_auto_center", vehicleAutoCenter);
+        editor.putInt("aspect_ratio", aspectRatioIndex);
         editor.putBoolean("show_diagnostics", showMouseDiagnostics);
         editor.apply();
         syncNativeConfig();
@@ -190,6 +200,7 @@ public final class KeyboardMouseSettings {
         GameThread.INSTANCE.onPcMouseOptions(0.0f, smoothing);
         GameThread.INSTANCE.onPcCombatConfig(
                 aimSensitivity, strafeSpeed, pcSprint, fastWeaponSwitch, vehicleAutoCenter);
+        GameThread.INSTANCE.onPcAspectRatio(ASPECT_RATIO_VALUES[aspectRatioIndex]);
     }
 
     public static synchronized int actionForKey(int keyCode) {
@@ -437,6 +448,41 @@ public final class KeyboardMouseSettings {
         presetRow.addView(rawZeroPreset, weightedParams(owner, 4, 0));
         generalCard.addView(presetRow, verticalMargins(owner, 6, 2));
 
+        // Card 1.5: Tela & Aspect Ratio (aplicação imediata in-game)
+        LinearLayout aspectCard = addSectionCard(owner, content, "TELA & PROPORÇÃO (ASPECT RATIO)");
+        TextView aspectLabel = makeValueLabel(owner);
+        aspectLabel.setText("Aspect Ratio atual: " + ASPECT_RATIO_LABELS[aspectRatioIndex]);
+        aspectCard.addView(aspectLabel, verticalMargins(owner, 0, 6));
+
+        LinearLayout aspectRow = new LinearLayout(owner);
+        aspectRow.setOrientation(LinearLayout.HORIZONTAL);
+        Button[] aspectButtons = new Button[ASPECT_RATIO_LABELS.length];
+        Runnable refreshAspectButtons = () -> {
+            aspectLabel.setText("Aspect Ratio atual: " + ASPECT_RATIO_LABELS[aspectRatioIndex]);
+            for (int i = 0; i < aspectButtons.length; i++) {
+                boolean active = (i == aspectRatioIndex);
+                aspectButtons[i].setBackground(roundedBackground(
+                        active ? 0xFF1D4ED8 : 0xFF252E42, dp(owner, 8),
+                        active ? 0xFF60A5FA : 0xFF3B475E));
+            }
+        };
+        for (int i = 0; i < ASPECT_RATIO_LABELS.length; i++) {
+            final int idx = i;
+            Button btn = makePillButton(owner, ASPECT_RATIO_LABELS[i],
+                    idx == aspectRatioIndex ? 0xFF1D4ED8 : 0xFF252E42, Color.WHITE);
+            btn.setOnClickListener(v -> {
+                synchronized (KeyboardMouseSettings.class) {
+                    aspectRatioIndex = idx;
+                    refreshAspectButtons.run();
+                    save(owner);
+                }
+            });
+            aspectButtons[i] = btn;
+            aspectRow.addView(btn, weightedParams(owner, i == 0 ? 0 : 3,
+                    i == ASPECT_RATIO_LABELS.length - 1 ? 0 : 3));
+        }
+        aspectCard.addView(aspectRow, verticalMargins(owner, 2, 2));
+
         // Card 2: Combate, Streif & Agilidade
         LinearLayout combatCard = addSectionCard(owner, content, "COMBATE, STREIF & AGILIDADE PC");
 
@@ -655,6 +701,7 @@ public final class KeyboardMouseSettings {
                 fastWeaponSwitch = true;
                 numberSlotKeys = true;
                 vehicleAutoCenter = false;
+                aspectRatioIndex = 0;
 
                 enableBox.setChecked(true);
                 xSeek.setProgress(sensitivityToProgress(sensitivityX));
@@ -668,6 +715,7 @@ public final class KeyboardMouseSettings {
                 fastSwitchBox.setChecked(true);
                 slotKeysBox.setChecked(true);
                 autoCenterBox.setChecked(false);
+                refreshAspectButtons.run();
 
                 save(owner);
                 InputHandler.INSTANCE.onPcInputEnabledChanged();

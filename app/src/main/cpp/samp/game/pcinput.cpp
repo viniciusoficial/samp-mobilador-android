@@ -3,7 +3,7 @@
 #include "native_camera_mouse.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
-#include "../gui/pause_menu.h"
+extern void SetNexionAspectRatio(float aspectRatio);
 #include "../vendor/encoding/encoding.h"
 #include <algorithm>
 #include <array>
@@ -519,7 +519,11 @@ void PcInputHandleEscape()
         return;
     }
 
-    PauseMenu::Toggle();
+    if (pNetGame != nullptr && pNetGame->GetTextDrawPool() != nullptr &&
+        pNetGame->GetTextDrawPool()->GetState())
+    {
+        pNetGame->GetTextDrawPool()->SetSelectState(false, 0);
+    }
     PcInputRefreshNativeInterfaceState();
 }
 
@@ -542,10 +546,9 @@ void PcInputRefreshNativeInterfaceState()
 {
     const bool textEntry = pUI != nullptr && pUI->keyboard()->visible();
     const bool dialogOpen = pUI != nullptr && pUI->dialog()->visible();
-    const bool pauseOpen = PauseMenu::IsOpen();
     const bool tabOpen = pUI != nullptr && pUI->playertablist()->visible();
 
-    const bool hardInterface = textEntry || dialogOpen || pauseOpen;
+    const bool hardInterface = textEntry || dialogOpen;
     const bool interfaceActive = hardInterface || tabOpen;
 
     g_textEntryActive.store(textEntry);
@@ -710,6 +713,13 @@ extern "C"
     Java_com_gta_game_input_KeyboardMouseBridge_nativeIsInterfaceActive(JNIEnv*, jclass)
     {
         return PcInputIsNativeInterfaceActive() ? JNI_TRUE : JNI_FALSE;
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeSetAspectRatio(
+        JNIEnv*, jclass, jfloat aspectRatio)
+    {
+        SetNexionAspectRatio(aspectRatio);
     }
 
     JNIEXPORT jboolean JNICALL

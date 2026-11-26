@@ -5,8 +5,6 @@
 #include <algorithm>
 #include "../settings.h"
 #include "java/jniutil.h"
-#include "../pause_menu.h"
-#include "../nexion_minimap.h"
 
 extern UI* pUI;
 extern CGame* pGame;
@@ -108,25 +106,6 @@ void Chat::keyboardEvent(const std::string& input)
     {
         if (pJavaWrapper)
             pJavaWrapper->ShowKeyboardMouseSettings();
-        return;
-    }
-
-    if (input == "/menu")
-    {
-        if (pUI && pUI->keyboard())
-            pUI->keyboard()->hide();
-        PauseMenu::Toggle();
-        return;
-    }
-
-    if (input == "/map")
-    {
-        if (pUI && pUI->keyboard())
-            pUI->keyboard()->hide();
-        if (NexionMiniMap::IsLargeMapOpen())
-            NexionMiniMap::CloseLargeMap();
-        else
-            NexionMiniMap::OpenLargeMap();
         return;
     }
 

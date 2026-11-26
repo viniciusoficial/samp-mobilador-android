@@ -1,7 +1,11 @@
 package com.rockstargames.oswrapper.view;
 
+import android.content.Context;
 import android.graphics.PointF;
+import android.hardware.input.InputManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 import android.util.SparseArray;
@@ -90,20 +94,67 @@ public class InputHandler implements GameViewHandler {
     private int mouseEventCount;
     private Boolean externalInputPresent;
     private long lastExternalInputScanMs;
+    private InputManager inputManager;
+    private boolean inputDeviceListenerRegistered;
+    private final InputManager.InputDeviceListener inputDeviceListener =
+            new InputManager.InputDeviceListener() {
+                @Override
+                public void onInputDeviceAdded(int deviceId) {
+                    syncExternalInputPresence(true);
+                }
+
+                @Override
+                public void onInputDeviceRemoved(int deviceId) {
+                    syncExternalInputPresence(true);
+                }
+
+                @Override
+                public void onInputDeviceChanged(int deviceId) {
+                    syncExternalInputPresence(true);
+                }
+            };
 
     private InputHandler() {}
 
     private boolean detectExternalKeyboardOrMouse() {
+        boolean hasKeyboard = false;
+        boolean hasMouse = false;
         for (int deviceId : InputDevice.getDeviceIds()) {
             InputDevice device = InputDevice.getDevice(deviceId);
             if (device == null || device.isVirtual()) continue;
             int sources = device.getSources();
-            boolean mouse = (sources & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE;
-            boolean keyboard = (sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
-                    && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC;
-            if (mouse || keyboard) return true;
+            if (isMouseSource(sources)) {
+                hasMouse = true;
+            }
+            if ((sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
+                    && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC) {
+                hasKeyboard = true;
+            }
+            if (hasKeyboard && hasMouse) {
+                return true;
+            }
         }
         return false;
+    }
+
+    private void registerInputDeviceListener(Context context) {
+        if (inputDeviceListenerRegistered || context == null) {
+            return;
+        }
+        InputManager manager = (InputManager) context.getApplicationContext()
+                .getSystemService(Context.INPUT_SERVICE);
+        if (manager != null) {
+            manager.registerInputDeviceListener(inputDeviceListener, new Handler(Looper.getMainLooper()));
+            inputManager = manager;
+            inputDeviceListenerRegistered = true;
+        }
+    }
+
+    private void unregisterInputDeviceListener() {
+        if (inputDeviceListenerRegistered && inputManager != null) {
+            inputManager.unregisterInputDeviceListener(inputDeviceListener);
+        }
+        inputDeviceListenerRegistered = false;
     }
 
     private void syncExternalInputPresence(boolean force) {
@@ -112,8 +163,17 @@ public class InputHandler implements GameViewHandler {
         lastExternalInputScanMs = now;
         boolean present = detectExternalKeyboardOrMouse();
         if (externalInputPresent == null || externalInputPresent != present) {
-            externalInputPresent = present;
-            KeyboardMouseBridge.nativeSetExternalInputPresent(present);
+            try {
+                KeyboardMouseBridge.nativeSetExternalInputPresent(present);
+                externalInputPresent = present;
+                if (!present) {
+                    releasePcKeys();
+                    releaseMouseButtons();
+                }
+                updatePointerCapture();
+            } catch (UnsatisfiedLinkError ignored) {
+                // Retry once native library is loaded.
+            }
         }
     }
 
@@ -396,7 +456,7 @@ public class InputHandler implements GameViewHandler {
         if (isMouseSource(event.getSource())) {
             return onMouseMotionEvent(event, false);
         }
-        if (KeyboardMouseSettings.isEnabled() && externalInputPresent &&
+        if (KeyboardMouseSettings.isEnabled() && Boolean.TRUE.equals(externalInputPresent) &&
                 !isHardInterfaceBlocking()) {
             if (touchLogCounter++ % 60 == 0) {
                 Log.d(TAG, "[TOUCH-MOUSE] blocked reason=PC gameplay mode");
@@ -460,6 +520,7 @@ public class InputHandler implements GameViewHandler {
     @Override
     public void setup(GameActivityBase activity) {
         KeyboardMouseSettings.load(activity);
+        registerInputDeviceListener(activity);
         syncExternalInputPresence(true);
         GameThread.INSTANCE.onPcInputEnabled(KeyboardMouseSettings.isEnabled());
         updatePointerCapture();
@@ -467,6 +528,7 @@ public class InputHandler implements GameViewHandler {
 
     @Override
     public void onPause() {
+        unregisterInputDeviceListener();
         nativeTabMode = false;
         nativeTextEntryMode = false;
         pendingTextEntryUntilMs = 0L;
@@ -483,6 +545,9 @@ public class InputHandler implements GameViewHandler {
 
     @Override
     public void onResume() {
+        if (gameView != null) {
+            registerInputDeviceListener(gameView.getContext());
+        }
         KeyboardMouseSettings.syncNativeConfig();
         syncExternalInputPresence(true);
         updateInterfaceVisibility();
@@ -491,6 +556,10 @@ public class InputHandler implements GameViewHandler {
 
     public void setGameView(View view) {
         gameView = view;
+        if (view != null) {
+            registerInputDeviceListener(view.getContext());
+            syncExternalInputPresence(true);
+        }
         updatePointerCapture();
     }
 

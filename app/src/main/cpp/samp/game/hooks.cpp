@@ -38,9 +38,7 @@
 #include "graphics/RQShader.h"
 #include "Mobile/MobileMenu/MobileMenu.h"
 #include "Mobile/MobileSettings/MobileSettings.h"
-#include "../gui/nexion_minimap.h"
 #include "../gui/nexioncontrols.h"
-#include "../gui/pause_menu.h"
 ///skip for now later if above is already converted
 extern UI* pUI;
 extern CGame* pGame;
@@ -108,7 +106,54 @@ void SetNexionRadioVolume(float value) { g_nexionRadioVolume = std::max(0.0f, st
 float GetNexionRadioVolume() { return g_nexionRadioVolume; }
 void SetNexionRadioAutoTune(bool enabled) { if (g_libGTASA) SetNativeMobileSetting(MS_Autotune, enabled ? 1 : 0); }
 void SetNexionRadioStation(int station) { if (g_libGTASA) SetNativeMobileSetting(MS_DefaultStation, station); }
-void SetNexionAspectRatio(float) {}
+extern float* ms_fAspectRatio;
+extern float (*CDraw__SetFOV)(float thiz, float a2);
+extern float CDraw__SetFOV_hook(float thiz, float a2);
+extern void CameraSize(RwCamera* camera, RwRect* rect, RwReal viewWindow, RwReal aspectRatio);
+
+namespace
+{
+    float g_customAspectRatio = 0.0f;
+}
+
+float (*CDraw__CalculateAspectRatio)();
+float CDraw__CalculateAspectRatio_hook()
+{
+    float result = CDraw__CalculateAspectRatio ? CDraw__CalculateAspectRatio() : 0.0f;
+    if (g_customAspectRatio > 0.1f)
+    {
+        if (ms_fAspectRatio)
+        {
+            *ms_fAspectRatio = g_customAspectRatio;
+        }
+        return g_customAspectRatio;
+    }
+    return result;
+}
+
+void SetNexionAspectRatio(float aspectRatio)
+{
+    g_customAspectRatio = aspectRatio;
+    if (aspectRatio <= 0.1f)
+    {
+        return;
+    }
+
+    if (ms_fAspectRatio)
+    {
+        *ms_fAspectRatio = aspectRatio;
+    }
+
+    if (g_libGTASA)
+    {
+        CScene& scenes = *reinterpret_cast<CScene*>(g_libGTASA + 0xCD0868);
+        if (scenes.m_pRwCamera)
+        {
+            CameraSize(scenes.m_pRwCamera, nullptr, 0.7f, aspectRatio);
+        }
+        CDraw__SetFOV_hook(70.0f, 0.0f);
+    }
+}
 
 int GetNexionTargetingMode()
 {
@@ -207,6 +252,11 @@ void MainLoop();
 void(*Render2dStuff)();
 void Render2dStuff_hook()
 {
+    if (g_customAspectRatio > 0.1f && ms_fAspectRatio)
+    {
+        *ms_fAspectRatio = g_customAspectRatio;
+    }
+
     MainLoop();
     Render2dStuff();
 
@@ -219,8 +269,9 @@ void Render2dStuff_hook()
         }
 
         CTextDrawPool* pTextDrawPool = pNetGame->GetTextDrawPool();
-        if (pTextDrawPool && pTextDrawPool->GetState() == false) {
+        if (pTextDrawPool) {
             pTextDrawPool->SnapshotProcess();
+            pTextDrawPool->Draw();
         }
     }
 
@@ -244,12 +295,6 @@ void CRadar_DrawRadarGangOverlay_hook(uint32_t unk)
 }
 
 int (*CRadar__SetCoordBlip)(int r0, float X, float Y, float Z, int r4, int r5, char *name);
-void NexionMapSendWaypoint(float X, float Y, float Z)
-{
-    if (!CRadar__SetCoordBlip) return;
-    char codeway[] = "CODEWAY";
-    CRadar__SetCoordBlip(0, X, Y, Z, 0, 0, codeway);
-}
 
 int CRadar__SetCoordBlip_hook(int r0, float X, float Y, float Z, int r4, int r5, char *name)
 {
@@ -515,10 +560,6 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
     if (pGame->IsGamePaused())
         return AND_TouchEvent(type, num, posX, posY);
 
-    if (PauseMenu::HandleTouch(type, posX, posY))
-        return;
-    if (NexionMiniMap::HandleTouch(type, num, posX, posY))
-        return;
     if (NexionControls::HandleTouch(type, num, posX, posY))
         return;
 
@@ -2314,6 +2355,11 @@ void InstallHooks()
 
 
     CHook::InlineHook("_ZN5CDraw6SetFOVEfb", &CDraw__SetFOV_hook, &CDraw__SetFOV);
+    CHook::InlineHook("_ZN5CDraw20CalculateAspectRatioEv", &CDraw__CalculateAspectRatio_hook, &CDraw__CalculateAspectRatio);
+    if (g_customAspectRatio > 0.1f && ms_fAspectRatio)
+    {
+        *ms_fAspectRatio = g_customAspectRatio;
+    }
     CHook::InlineHook("_ZN10CStreaming5Init2Ev", &CStreaming__Init2_hook, &CStreaming__Init2);
 
     //CHook::InlineHook("mpg123_param", &mpg123_param_hook, &mpg123_param);

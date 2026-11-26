@@ -628,6 +628,13 @@ public final class GameThread {
         });
     }
 
+    public void onPcAspectRatio(final float aspectRatio) {
+        queueEvent(() -> {
+            KeyboardMouseBridge.nativeSetAspectRatio(aspectRatio);
+            return Unit.INSTANCE;
+        });
+    }
+
     public void onPcMouseOptions(final float maxDelta, final float smoothing) {
         queueEvent(() -> {
             KeyboardMouseBridge.nativeSetMouseOptions(maxDelta, smoothing);

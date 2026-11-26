@@ -14,7 +14,7 @@
 #include "../net/localplayer.h"
 #include "../net/vehiclepool.h"
 #include "gui.h"
-#include "samp_widgets/nexionsettingsmenu.h"
+int GetNexionTargetingMode();
 #include "../settings.h"
 
 #include <algorithm>

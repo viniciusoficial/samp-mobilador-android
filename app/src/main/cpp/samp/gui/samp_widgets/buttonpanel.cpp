@@ -1,4 +1,4 @@
-extern bool PcInputIsEnabledForTouch();
+extern bool PcInputIsExternalInputPresent();
 #include "main.h"
 #include "gui/gui.h"
 #include "game/game.h"
@@ -113,7 +113,7 @@ ButtonPanel::ButtonPanel()
 void ButtonPanel::performLayerVisibility()
 {
     // Se o teclado/mouse estiver conectado e ativo, ocultar todos os botoes flutuantes (Y, N, ESC, H, TAB, etc.)
-    const bool pcConnected = PcInputIsEnabledForTouch();
+    const bool pcConnected = PcInputIsExternalInputPresent();
     for (auto child : children()) {
         if (child) {
             child->setVisible(!pcConnected);
@@ -127,7 +127,7 @@ void ButtonPanel::performLayout()
     Layout::performLayout();
 
     if (m_bAlt) {
-        m_bAlt->setVisible(!PcInputIsEnabledForTouch());
+        m_bAlt->setVisible(!PcInputIsExternalInputPresent());
     }
 
     if (m_bOpen && m_bTab)
@@ -143,7 +143,16 @@ void ButtonPanel::performLayout()
 
 void ButtonPanel::draw(ImGuiRenderer* renderer)
 {
-    if (PcInputIsEnabledForTouch()) {
+    static bool s_lastPcConnected = false;
+    const bool pcConnected = PcInputIsExternalInputPresent();
+    if (pcConnected != s_lastPcConnected) {
+        s_lastPcConnected = pcConnected;
+        performLayerVisibility();
+        if (m_bAlt) {
+            m_bAlt->setVisible(!pcConnected);
+        }
+    }
+    if (pcConnected) {
         return;
     }
     Layout::draw(renderer);
@@ -151,7 +160,7 @@ void ButtonPanel::draw(ImGuiRenderer* renderer)
 
 void ButtonPanel::touchEvent(const ImVec2& pos, TouchType type)
 {
-    if (PcInputIsEnabledForTouch()) {
+    if (PcInputIsExternalInputPresent()) {
         return;
     }
     Layout::touchEvent(pos, type);

@@ -17,6 +17,7 @@ extern UI* pUI;
 
 extern CNetGame *pNetGame;
 extern CGame *pGame;
+extern bool PcInputIsExternalInputPresent();
 
 CWidgetGta* m_pWidgets[WidgetIDs::NUM_WIDGETS];
 
@@ -162,6 +163,42 @@ uintptr_t CWidget_hook(CWidgetButton* thiz, const char* name, uintptr_t*  a3, in
     return CWidget(thiz, name, a3, a4, a5);
 }
 
+static bool IsTouchControlWidget(CWidgetGta* pWidget)
+{
+    if (!pWidget) return false;
+    WidgetIDs id = GetWidgetTypeFromWidget(pWidget);
+    if (id == WIDGET_PLAYER_INFO || id == WIDGET_RADAR ||
+        id == WIDGET_HELP_TEXT || id == WIDGET_MAP) {
+        return false;
+    }
+    return true;
+}
+
+static bool ShouldHideTouchWidget(CWidgetGta* pWidget)
+{
+    return PcInputIsExternalInputPresent() && IsTouchControlWidget(pWidget);
+}
+
+#define DEFINE_WIDGET_DRAW_HOOK(Name) \
+    void (*Name##_orig)(CWidgetGta* thiz); \
+    void Name##_hook(CWidgetGta* thiz) { \
+        if (ShouldHideTouchWidget(thiz)) return; \
+        Name##_orig(thiz); \
+    }
+
+DEFINE_WIDGET_DRAW_HOOK(CWidgetButton__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetButtonAnimated__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetButtonEnterCar__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetButtonHydraulics__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetRegion__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetRegionMove__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetRegionSteer__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetRegionSprint__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetRegionDriveHybrid__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetRegionHydraulics__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetRegionFlick__Draw)
+DEFINE_WIDGET_DRAW_HOOK(CWidgetThumbCircle__Draw)
+
 void (*CWidget__SetEnabled)(CWidgetGta* pWidget, bool bEnabled);
 void CWidget__SetEnabled_hook(CWidgetGta* pWidget, bool bEnabled)
 {
@@ -188,6 +225,10 @@ void CWidget__SetEnabled_hook(CWidgetGta* pWidget, bool bEnabled)
 
 void (*CWidgetButton__Update)(CWidgetButton* thiz);
 void CWidgetButton__Update_hook(CWidgetButton* thiz) {
+    if (ShouldHideTouchWidget(thiz)) {
+        return;
+    }
+
     WidgetIDs widgetType = GetWidgetTypeFromWidget(thiz);
 
     if(widgetType == WidgetIDs::WIDGET_CAM_TOGGLE) {
@@ -251,7 +292,7 @@ eWidgetState ProcessFixedWidgetFromId(int iWidgetId)
 int (*CTouchInterface__IsTouched)(int iWidgetId, CVector2D *pVecOut, int nFrameCount);
 int CTouchInterface__IsTouched_hook(int iWidgetId, CVector2D *pVecOut, int nFrameCount)
 {
-    if (PcInputIsEnabledForTouch())
+    if (PcInputIsExternalInputPresent())
         return 0;
 
     if(iWidgetId == WIDGET_CAM_TOGGLE) {
@@ -276,6 +317,19 @@ void CWidgetGta::InjectHooks() {
     CHook::InlineHook("_ZN7CWidget10SetEnabledEb", &CWidget__SetEnabled_hook, &CWidget__SetEnabled);
     CHook::InlineHook("_ZN15CTouchInterface9IsTouchedENS_9WidgetIDsEP9CVector2Di", &CTouchInterface__IsTouched_hook,
                       &CTouchInterface__IsTouched);
+
+    CHook::InlineHook("_ZN13CWidgetButton4DrawEv", &CWidgetButton__Draw_hook, &CWidgetButton__Draw_orig);
+    CHook::InlineHook("_ZN21CWidgetButtonAnimated4DrawEv", &CWidgetButtonAnimated__Draw_hook, &CWidgetButtonAnimated__Draw_orig);
+    CHook::InlineHook("_ZN21CWidgetButtonEnterCar4DrawEv", &CWidgetButtonEnterCar__Draw_hook, &CWidgetButtonEnterCar__Draw_orig);
+    CHook::InlineHook("_ZN23CWidgetButtonHydraulics4DrawEv", &CWidgetButtonHydraulics__Draw_hook, &CWidgetButtonHydraulics__Draw_orig);
+    CHook::InlineHook("_ZN13CWidgetRegion4DrawEv", &CWidgetRegion__Draw_hook, &CWidgetRegion__Draw_orig);
+    CHook::InlineHook("_ZN17CWidgetRegionMove4DrawEv", &CWidgetRegionMove__Draw_hook, &CWidgetRegionMove__Draw_orig);
+    CHook::InlineHook("_ZN18CWidgetRegionSteer4DrawEv", &CWidgetRegionSteer__Draw_hook, &CWidgetRegionSteer__Draw_orig);
+    CHook::InlineHook("_ZN19CWidgetRegionSprint4DrawEv", &CWidgetRegionSprint__Draw_hook, &CWidgetRegionSprint__Draw_orig);
+    CHook::InlineHook("_ZN24CWidgetRegionDriveHybrid4DrawEv", &CWidgetRegionDriveHybrid__Draw_hook, &CWidgetRegionDriveHybrid__Draw_orig);
+    CHook::InlineHook("_ZN23CWidgetRegionHydraulics4DrawEv", &CWidgetRegionHydraulics__Draw_hook, &CWidgetRegionHydraulics__Draw_orig);
+    CHook::InlineHook("_ZN18CWidgetRegionFlick4DrawEv", &CWidgetRegionFlick__Draw_hook, &CWidgetRegionFlick__Draw_orig);
+    CHook::InlineHook("_ZN18CWidgetThumbCircle4DrawEv", &CWidgetThumbCircle__Draw_hook, &CWidgetThumbCircle__Draw_orig);
 }
 
 void CWidgetGta::SetTexture(const char *name) {
