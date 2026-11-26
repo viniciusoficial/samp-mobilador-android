@@ -1,3 +1,4 @@
+extern bool PcInputIsEnabledForTouch();
 #include "main.h"
 #include "gui/gui.h"
 #include "game/game.h"
@@ -118,8 +119,6 @@ void ButtonPanel::performLayerVisibility()
             child->setVisible(!pcConnected);
         }
     }
-    if (m_bOpen) m_bOpen->setVisible(!pcConnected);
-    if (m_bClose) m_bClose->setVisible(!pcConnected);
 }
 
 void ButtonPanel::performLayout()
@@ -139,4 +138,21 @@ void ButtonPanel::performLayout()
         ImVec2 openSize = m_bOpen->size();
         m_bTab->setPosition(ImVec2(openPos.x + openSize.x + 10.0f, openPos.y));
     }
+}
+
+
+void ButtonPanel::draw(ImGuiRenderer* renderer)
+{
+    if (PcInputIsEnabledForTouch()) {
+        return;
+    }
+    Layout::draw(renderer);
+}
+
+void ButtonPanel::touchEvent(const ImVec2& pos, TouchType type)
+{
+    if (PcInputIsEnabledForTouch()) {
+        return;
+    }
+    Layout::touchEvent(pos, type);
 }

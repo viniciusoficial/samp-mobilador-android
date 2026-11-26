@@ -628,6 +628,7 @@ namespace NexionControls
 
     void Draw(ImDrawList* draw, const ImVec2& displaySize, float scale)
     {
+        if (PcInputIsEnabledForTouch()) return;
         if (!draw || displaySize.x <= 0.0f || displaySize.y <= 0.0f || !pGame) return;
         CPlayerPed* ped = pGame->FindPlayerPed();
         if (!ped) return;
@@ -675,6 +676,7 @@ namespace NexionControls
 
     bool HandleTouch(int type, int pointerIndex, int x, int y)
     {
+        if (PcInputIsEnabledForTouch()) return false;
         g_nativeCameraEventForwarded = false;
         if (!g_enabled || pointerIndex < 0 || pointerIndex >= 16) return false;
         // Com o teclado aberto, os controles não interceptam o toque: as teclas

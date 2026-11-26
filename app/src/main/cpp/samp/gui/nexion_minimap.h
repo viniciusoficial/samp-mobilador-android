@@ -20,6 +20,7 @@ namespace NexionMiniMap
 
     // Abre o mapa grande nativo, centralizado e pronto para arrasto/zoom.
     void OpenLargeMap();
+    void CloseLargeMap();
 
     // Permite ocultar os demais elementos do HUD enquanto o mapa livre estiver aberto.
     bool IsLargeMapOpen();

@@ -207,9 +207,8 @@ void MainLoop();
 void(*Render2dStuff)();
 void Render2dStuff_hook()
 {
-    Render2dStuff();
     MainLoop();
-    
+    Render2dStuff();
 
     if (pNetGame && pGame && !pGame->IsGamePaused())
     {
@@ -1605,7 +1604,7 @@ void MainMenu_OnStartSAMP()
     //InitInMenu();
     pGame->StartGame();
 
-  //  CHook::CallFunction<void>(g_libGTASA + 0x718FCC); //  Menu_NewGame();
+    CHook::CallFunction<void>(g_libGTASA + 0x718FCC); //  Menu_NewGame();
 
 
 
@@ -1613,7 +1612,7 @@ void MainMenu_OnStartSAMP()
     g_bPlaySAMP = true;
 }
 
-/*unsigned int (*MainMenuScreen__Update)(uintptr_t thiz, float a2);
+unsigned int (*MainMenuScreen__Update)(uintptr_t thiz, float a2);
 unsigned int MainMenuScreen__Update_hook(uintptr_t thiz, float a2)
 {
     if (!g_bPlaySAMP)
@@ -1624,27 +1623,12 @@ unsigned int MainMenuScreen__Update_hook(uintptr_t thiz, float a2)
         MainMenu_OnStartSAMP();
     }
     return MainMenuScreen__Update(thiz, a2);
-}*/
-
-//mexi aqui
-
-unsigned int (*MainMenuScreen__Update)(uintptr_t thiz, float a2);
-
-unsigned int MainMenuScreen__Update_hook(uintptr_t thiz, float a2)
-{
-    if (!g_bPlaySAMP)
-    {
-        MainMenu_OnStartSAMP();
-        return 0;
-    }
-
-    return MainMenuScreen__Update(thiz, a2);
 }
 
 void (*StartGameScreen__OnNewGameCheck)();
 void StartGameScreen__OnNewGameCheck_hook()
 {
-    // Desative o botão de iniciar jogo
+    // отключить кнопку начать игру
     if(g_bPlaySAMP)
         return;
 

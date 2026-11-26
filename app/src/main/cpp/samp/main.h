@@ -3,6 +3,11 @@
 #include <cstdlib>
 #include <cstdio>
 #include <vector>
+#include <memory>
+#include <cstdint>
+#include <functional>
+#include <unordered_map>
+#include <queue>
 #include <list>
 #include <string>
 #include <sstream>

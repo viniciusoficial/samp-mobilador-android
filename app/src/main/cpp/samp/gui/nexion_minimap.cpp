@@ -1709,6 +1709,13 @@ namespace NexionMiniMap
         g_largeMapCenterUv = ImVec2(0.5f, 0.5f);
     }
 
+    void CloseLargeMap()
+    {
+        SetLargeMapOpenState(false);
+        g_miniMapTouchActive = false;
+        ResetLargeMapTouches();
+    }
+
     bool IsLargeMapOpen()
     {
         return g_largeMapOpen;

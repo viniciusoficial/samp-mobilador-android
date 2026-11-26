@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "../vendor/imgui/imgui.h"
