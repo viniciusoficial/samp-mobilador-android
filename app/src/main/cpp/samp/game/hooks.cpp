@@ -107,8 +107,6 @@ float GetNexionRadioVolume() { return g_nexionRadioVolume; }
 void SetNexionRadioAutoTune(bool enabled) { if (g_libGTASA) SetNativeMobileSetting(MS_Autotune, enabled ? 1 : 0); }
 void SetNexionRadioStation(int station) { if (g_libGTASA) SetNativeMobileSetting(MS_DefaultStation, station); }
 extern float* ms_fAspectRatio;
-extern float (*CDraw__SetFOV)(float thiz, float a2);
-extern float CDraw__SetFOV_hook(float thiz, float a2);
 extern void CameraSize(RwCamera* camera, RwRect* rect, RwReal viewWindow, RwReal aspectRatio);
 
 namespace
@@ -151,7 +149,6 @@ void SetNexionAspectRatio(float aspectRatio)
         {
             CameraSize(scenes.m_pRwCamera, nullptr, 0.7f, aspectRatio);
         }
-        CDraw__SetFOV_hook(70.0f, 0.0f);
     }
 }
 

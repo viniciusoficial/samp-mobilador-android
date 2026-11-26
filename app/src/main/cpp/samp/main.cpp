@@ -108,91 +108,57 @@ struct sigaction act_old;
 struct sigaction act1_old;
 struct sigaction act2_old;
 struct sigaction act3_old;
+struct sigaction act4_old;
 
-extern int g_iLastProcessedSkinCollision, g_iLastProcessedEntityCollision, g_iLastRenderedObject;
-extern uintptr_t g_dwLastRetAddrCrash;
+static volatile sig_atomic_t g_inCrashHandler = 0;
+
+static void HandleCrashSignal(int signum, siginfo_t *info, void* contextPtr, struct sigaction* oldAct)
+{
+	if (!g_inCrashHandler)
+	{
+		g_inCrashHandler = 1;
+		ucontext_t* context = reinterpret_cast<ucontext_t*>(contextPtr);
+		CStackTrace::PrintCrashReport(signum, info, context);
+	}
+
+	if (oldAct && (oldAct->sa_flags & SA_SIGINFO) && oldAct->sa_sigaction)
+	{
+		oldAct->sa_sigaction(signum, info, contextPtr);
+	}
+	else if (oldAct && oldAct->sa_handler != SIG_DFL && oldAct->sa_handler != SIG_IGN && oldAct->sa_handler != nullptr)
+	{
+		oldAct->sa_handler(signum);
+	}
+	else
+	{
+		signal(signum, SIG_DFL);
+		raise(signum);
+	}
+}
+
 void handler(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act_old.sa_sigaction)
-	{
-		act_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGSEGV)
-	{
-		Log("SIGSEGV | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+	HandleCrashSignal(signum, info, contextPtr, &act_old);
 }
 
 void handler1(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act1_old.sa_sigaction)
-	{
-		act1_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGABRT)
-	{
-		Log("SIGABRT | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+	HandleCrashSignal(signum, info, contextPtr, &act1_old);
 }
 
 void handler2(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
-
-	if (act2_old.sa_sigaction)
-	{
-		act2_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGFPE)
-	{
-		Log("SIGFPE | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+	HandleCrashSignal(signum, info, contextPtr, &act2_old);
 }
 
 void handler3(int signum, siginfo_t *info, void* contextPtr)
 {
-	ucontext* context = (ucontext_t*)contextPtr;
+	HandleCrashSignal(signum, info, contextPtr, &act3_old);
+}
 
-	if (act3_old.sa_sigaction)
-	{
-		act3_old.sa_sigaction(signum, info, contextPtr);
-	}
-
-	if(info->si_signo == SIGBUS)
-	{
-		Log("SIGBUS | Fault address: 0x%x", info->si_addr);
-
-		PRINT_CRASH_STATES(context);
-
-		CStackTrace::printBacktrace();
-	}
-
-	return;
+void handler4(int signum, siginfo_t *info, void* contextPtr)
+{
+	HandleCrashSignal(signum, info, contextPtr, &act4_old);
 }
 
 void DoInitStuff()
@@ -379,6 +345,12 @@ jint JNI_OnLoad(JavaVM* vm, void* reserved)
 	sigemptyset(&act3.sa_mask);
 	act3.sa_flags = SA_SIGINFO;
 	sigaction(SIGBUS, &act3, &act3_old);
+
+	struct sigaction act4;
+	act4.sa_sigaction = handler4;
+	sigemptyset(&act4.sa_mask);
+	act4.sa_flags = SA_SIGINFO;
+	sigaction(SIGILL, &act4, &act4_old);
 		
 	return JNI_VERSION_1_6;
 }
@@ -426,11 +398,7 @@ void Log(const char* fmt, ...)
 	if (flLog == nullptr)
 		return;
 	fprintf(flLog, "%s\n", buffer);
-	if (++logWriteCount >= 64)
-	{
-		fflush(flLog);
-		logWriteCount = 0;
-	}
+	fflush(flLog);
 }
 
 void LogVoice(const char* fmt, ...)
