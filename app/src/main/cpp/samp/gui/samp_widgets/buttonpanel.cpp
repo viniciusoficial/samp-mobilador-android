@@ -109,12 +109,26 @@ ButtonPanel::ButtonPanel()
 	//m_bF->setColor(ImColor(0.11f, 0.11f, 0.11f, 0.80f));
 }
 
+void ButtonPanel::performLayerVisibility()
+{
+    // Se o teclado/mouse estiver conectado e ativo, ocultar todos os botoes flutuantes (Y, N, ESC, H, TAB, etc.)
+    const bool pcConnected = PcInputIsEnabledForTouch();
+    for (auto child : children()) {
+        if (child) {
+            child->setVisible(!pcConnected);
+        }
+    }
+    if (m_bOpen) m_bOpen->setVisible(!pcConnected);
+    if (m_bClose) m_bClose->setVisible(!pcConnected);
+}
+
 void ButtonPanel::performLayout()
 {
+    performLayerVisibility();
     Layout::performLayout();
 
     if (m_bAlt) {
-        m_bAlt->setVisible(true);
+        m_bAlt->setVisible(!PcInputIsEnabledForTouch());
     }
 
     if (m_bOpen && m_bTab)

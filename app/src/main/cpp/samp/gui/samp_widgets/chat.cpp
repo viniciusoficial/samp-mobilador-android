@@ -109,6 +109,21 @@ void Chat::keyboardEvent(const std::string& input)
         return;
     }
 
+    if (input == "/menu")
+    {
+        PauseMenu::Toggle();
+        return;
+    }
+
+    if (input == "/map")
+    {
+        if (NexionMiniMap::IsOpen())
+            NexionMiniMap::Close();
+        else
+            NexionMiniMap::OpenLargeMap();
+        return;
+    }
+
     if (input.length() > 0 && pNetGame)
     {
         if (input[0] == '/') pNetGame->SendChatCommand(input.c_str());

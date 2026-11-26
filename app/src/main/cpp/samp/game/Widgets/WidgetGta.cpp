@@ -188,14 +188,6 @@ void CWidget__SetEnabled_hook(CWidgetGta* pWidget, bool bEnabled)
 
 void (*CWidgetButton__Update)(CWidgetButton* thiz);
 void CWidgetButton__Update_hook(CWidgetButton* thiz) {
-    // O teclado/mouse externo substitui os controles touch. Interromper o
-    // update do widget impede tanto o desenho quanto a área de toque, mas
-    // não altera m_bEnabled; ao desconectar, o jogo pode voltar a atualizá-lo
-    // normalmente e os widgets reaparecem sem reconstrução da UI.
-    if (PcInputIsExternalInputPresent()) {
-        return;
-    }
-
     WidgetIDs widgetType = GetWidgetTypeFromWidget(thiz);
 
     if(widgetType == WidgetIDs::WIDGET_CAM_TOGGLE) {

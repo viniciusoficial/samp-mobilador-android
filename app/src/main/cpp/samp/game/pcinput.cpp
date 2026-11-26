@@ -3,6 +3,7 @@
 #include "native_camera_mouse.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
+#include "../gui/pause_menu.h"
 #include "../vendor/encoding/encoding.h"
 #include <algorithm>
 #include <array>
@@ -211,15 +212,6 @@ bool PcInputIsEnabledForTouch()
 void PcInputSetExternalInputPresent(bool present)
 {
     const bool wasPresent = g_externalInputPresent.exchange(present);
-
-    // O painel de atalhos (TAB, ESC, H, Y, G etc.) pertence à UI do SA-MP,
-    // não ao diálogo/chat. Sua visibilidade acompanha exclusivamente a
-    // presença física do teclado/mouse e é restaurada ao desconectar.
-    if (pUI != nullptr && pUI->buttonpanel() != nullptr)
-    {
-        pUI->buttonpanel()->setVisible(!present);
-    }
-
     if (wasPresent && !present)
     {
         for (int i = 0; i < kActionCount; ++i)
@@ -527,6 +519,7 @@ void PcInputHandleEscape()
         return;
     }
 
+    PauseMenu::Toggle();
     PcInputRefreshNativeInterfaceState();
 }
 
@@ -549,9 +542,10 @@ void PcInputRefreshNativeInterfaceState()
 {
     const bool textEntry = pUI != nullptr && pUI->keyboard()->visible();
     const bool dialogOpen = pUI != nullptr && pUI->dialog()->visible();
+    const bool pauseOpen = PauseMenu::IsOpen();
     const bool tabOpen = pUI != nullptr && pUI->playertablist()->visible();
 
-    const bool hardInterface = textEntry || dialogOpen;
+    const bool hardInterface = textEntry || dialogOpen || pauseOpen;
     const bool interfaceActive = hardInterface || tabOpen;
 
     g_textEntryActive.store(textEntry);

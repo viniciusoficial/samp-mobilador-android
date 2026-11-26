@@ -55,6 +55,38 @@ struct stSettings
 	bool iFirstPerson;
 	int iFPSCount;
 
+	// Ajustes exclusivos do painel nativo Nexion. O vetor espelha os 36 campos
+	// MobileSettings da versão atual do GTA e permite restaurar cada controle
+	// nativo que o jogador tiver alterado no menu.
+	static constexpr int NexionMobileSettingCount = 36;
+	int iNexionMobileSettings[NexionMobileSettingCount];
+	int iNexionAspectRatio;
+	int iNexionRenderScale;
+	int iNexionDrawDistance;
+	int iNexionVisualEffects;
+	int iNexionGeneralCameraSensitivity;
+	int iNexionAimCameraSensitivity;
+	int iNexionMasterVolume;
+	int iNexionMusicVolume;
+	int iNexionRadioVolume;
+	bool bNexionParticleEffects;
+	bool bNexionDistanceFog;
+	bool bNexionSkidmarks;
+	int iNexionMiniMapBlipRange;
+
+	// Editor dos controles Nexion: contexto 0 = a pé, 1 = veículo.
+	static constexpr int NexionControlContextCount = 2;
+	static constexpr int NexionControlCount = 17;
+	static constexpr int NexionHudElementCount = 2;
+	int iNexionControlX[NexionControlContextCount][NexionControlCount];
+	int iNexionControlY[NexionControlContextCount][NexionControlCount];
+	int iNexionControlSize[NexionControlContextCount][NexionControlCount];
+	int iNexionControlOpacity[NexionControlContextCount][NexionControlCount];
+	int iNexionHudX[NexionControlContextCount][NexionHudElementCount];
+	int iNexionHudY[NexionControlContextCount][NexionHudElementCount];
+	int iNexionHudSize[NexionControlContextCount][NexionHudElementCount];
+	int iNexionHudOpacity[NexionControlContextCount][NexionHudElementCount];
+
 	bool iDialog;
 };
 
@@ -69,6 +101,9 @@ public:
     const stSettings& GetReadOnly();
     stSettings& GetWrite();
 
+    // Persiste todos os controles editáveis do menu Nexion, preservando as
+    // demais seções já existentes em SAMP/settings.ini.
+    void SaveNexionMenuSettings();
 
 private:
 	struct stSettings m_Settings;

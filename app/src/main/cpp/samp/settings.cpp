@@ -1,6 +1,7 @@
 #include "main.h"
 #include "settings.h"
 #include "vendor/inih/cpp/INIReader.h"
+#include "vendor/SimpleIni/SimpleIni.h"
 #include "game/game.h"
 
 #include <cstdio>
@@ -25,6 +26,43 @@ CSettings::CSettings()
 {
     Log("Loading settings..");
 
+    // Valores exclusivos do painel Nexion. -1 significa que ainda não existe
+    // preferência gravada para aquele item, preservando o padrão do GTA.
+    for (int index = 0; index < stSettings::NexionMobileSettingCount; ++index)
+    {
+        m_Settings.iNexionMobileSettings[index] = -1;
+    }
+    m_Settings.iNexionAspectRatio = 0;
+    m_Settings.iNexionRenderScale = -1;
+    m_Settings.iNexionDrawDistance = -1;
+    m_Settings.iNexionVisualEffects = -1;
+    m_Settings.iNexionGeneralCameraSensitivity = 50;
+    m_Settings.iNexionAimCameraSensitivity = 50;
+    m_Settings.iNexionMasterVolume = 100;
+    m_Settings.iNexionMusicVolume = 100;
+    m_Settings.iNexionRadioVolume = 100;
+    m_Settings.bNexionParticleEffects = true;
+    m_Settings.bNexionDistanceFog = true;
+    m_Settings.bNexionSkidmarks = true;
+    m_Settings.iNexionMiniMapBlipRange = 480;
+
+    for (int context = 0; context < stSettings::NexionControlContextCount; ++context)
+    {
+        for (int button = 0; button < stSettings::NexionControlCount; ++button)
+        {
+            m_Settings.iNexionControlX[context][button] = -1;
+            m_Settings.iNexionControlY[context][button] = -1;
+            m_Settings.iNexionControlSize[context][button] = -1;
+            m_Settings.iNexionControlOpacity[context][button] = -1;
+        }
+        for (int element = 0; element < stSettings::NexionHudElementCount; ++element)
+        {
+            m_Settings.iNexionHudX[context][element] = -1;
+            m_Settings.iNexionHudY[context][element] = -1;
+            m_Settings.iNexionHudSize[context][element] = -1;
+            m_Settings.iNexionHudOpacity[context][element] = -1;
+        }
+    }
 
     char buff[0x7F];
     sprintf(buff, "%sSAMP/settings.ini", g_pszStorage);
@@ -119,6 +157,59 @@ CSettings::CSettings()
     m_Settings.iFPSCounter = reader.GetBoolean("gui", "fps", true);
     m_Settings.iFPSCount = ClampSetting(reader.GetInteger("gui", "FPSLimit", 120), 30, 240, 120);
 
+    // Persistência completa do painel Nexion.
+    m_Settings.iNexionAspectRatio = ClampSetting(reader.GetInteger("nexion", "AspectRatio", 0), 0, 4, 0);
+    m_Settings.iNexionRenderScale = reader.GetInteger("nexion", "RenderScale", -1);
+    if (m_Settings.iNexionRenderScale < 0 || m_Settings.iNexionRenderScale > 100) m_Settings.iNexionRenderScale = -1;
+    m_Settings.iNexionDrawDistance = reader.GetInteger("nexion", "DrawDistance", -1);
+    if (m_Settings.iNexionDrawDistance < 0 || m_Settings.iNexionDrawDistance > 100) m_Settings.iNexionDrawDistance = -1;
+    m_Settings.iNexionVisualEffects = reader.GetInteger("nexion", "VisualEffects", -1);
+    if (m_Settings.iNexionVisualEffects < 0 || m_Settings.iNexionVisualEffects > 3) m_Settings.iNexionVisualEffects = -1;
+
+    for (int index = 0; index < stSettings::NexionMobileSettingCount; ++index)
+    {
+        char key[32]{};
+        std::snprintf(key, sizeof(key), "MobileSetting%02d", index);
+        m_Settings.iNexionMobileSettings[index] = reader.GetInteger("nexion", key, -1);
+    }
+
+    m_Settings.iNexionGeneralCameraSensitivity = ClampSetting(reader.GetInteger("nexion", "GeneralCameraSensitivity", 50), 1, 100, 50);
+    m_Settings.iNexionAimCameraSensitivity = ClampSetting(reader.GetInteger("nexion", "AimCameraSensitivity", 50), 1, 100, 50);
+    m_Settings.iNexionMasterVolume = ClampPercent(reader.GetInteger("nexion", "MasterVolume", 100), 100);
+    m_Settings.iNexionMusicVolume = ClampPercent(reader.GetInteger("nexion", "MusicVolume", 100), 100);
+    m_Settings.iNexionRadioVolume = ClampPercent(reader.GetInteger("nexion", "RadioVolume", 100), 100);
+    m_Settings.bNexionParticleEffects = reader.GetBoolean("nexion", "ParticleEffects", true);
+    m_Settings.bNexionDistanceFog = reader.GetBoolean("nexion", "DistanceFog", true);
+    m_Settings.bNexionSkidmarks = reader.GetBoolean("nexion", "Skidmarks", true);
+    m_Settings.iNexionMiniMapBlipRange = ClampSetting(reader.GetInteger("nexion", "MiniMapBlipRange", 480), 200, 1000, 480);
+
+    for (int context = 0; context < stSettings::NexionControlContextCount; ++context)
+    {
+        for (int button = 0; button < stSettings::NexionControlCount; ++button)
+        {
+            char key[64]{};
+            std::snprintf(key, sizeof(key), "Control%02d_%02d_X", context, button);
+            m_Settings.iNexionControlX[context][button] = reader.GetInteger("nexion", key, -1);
+            std::snprintf(key, sizeof(key), "Control%02d_%02d_Y", context, button);
+            m_Settings.iNexionControlY[context][button] = reader.GetInteger("nexion", key, -1);
+            std::snprintf(key, sizeof(key), "Control%02d_%02d_Size", context, button);
+            m_Settings.iNexionControlSize[context][button] = reader.GetInteger("nexion", key, -1);
+            std::snprintf(key, sizeof(key), "Control%02d_%02d_Opacity", context, button);
+            m_Settings.iNexionControlOpacity[context][button] = reader.GetInteger("nexion", key, -1);
+        }
+        for (int element = 0; element < stSettings::NexionHudElementCount; ++element)
+        {
+            char key[64]{};
+            std::snprintf(key, sizeof(key), "Hud%02d_%02d_X", context, element);
+            m_Settings.iNexionHudX[context][element] = reader.GetInteger("nexion", key, -1);
+            std::snprintf(key, sizeof(key), "Hud%02d_%02d_Y", context, element);
+            m_Settings.iNexionHudY[context][element] = reader.GetInteger("nexion", key, -1);
+            std::snprintf(key, sizeof(key), "Hud%02d_%02d_Size", context, element);
+            m_Settings.iNexionHudSize[context][element] = reader.GetInteger("nexion", key, -1);
+            std::snprintf(key, sizeof(key), "Hud%02d_%02d_Opacity", context, element);
+            m_Settings.iNexionHudOpacity[context][element] = reader.GetInteger("nexion", key, -1);
+        }
+    }
 
     m_Settings.iHPArmourText = reader.GetBoolean("gui", "hparmourtext", false);
     m_Settings.iOutfitGuns = reader.GetBoolean("gui", "outfitguns", false);
@@ -139,3 +230,74 @@ stSettings& CSettings::GetWrite()
     return m_Settings;
 }
 
+void CSettings::SaveNexionMenuSettings()
+{
+    char path[0x7F];
+    sprintf(path, "%sSAMP/settings.ini", g_pszStorage);
+
+    CSimpleIniA ini;
+    const SI_Error loadResult = ini.LoadFile(path);
+    if (loadResult < 0)
+    {
+        Log("Nexion settings: can't load %s (%d), saving a new file", path, static_cast<int>(loadResult));
+    }
+
+    ini.SetLongValue("gui", "FPSLimit", ClampSetting(m_Settings.iFPSCount, 30, 240, 120), nullptr, true);
+    ini.SetBoolValue("gui", "fps", m_Settings.iFPSCounter, nullptr, true);
+
+    ini.SetLongValue("nexion", "AspectRatio", ClampSetting(m_Settings.iNexionAspectRatio, 0, 4, 0), nullptr, true);
+    ini.SetLongValue("nexion", "RenderScale", ClampPercent(m_Settings.iNexionRenderScale, 65), nullptr, true);
+    ini.SetLongValue("nexion", "DrawDistance", ClampPercent(m_Settings.iNexionDrawDistance, 75), nullptr, true);
+    ini.SetLongValue("nexion", "VisualEffects", ClampSetting(m_Settings.iNexionVisualEffects, 0, 3, 1), nullptr, true);
+
+    for (int index = 0; index < stSettings::NexionMobileSettingCount; ++index)
+    {
+        char key[32]{};
+        std::snprintf(key, sizeof(key), "MobileSetting%02d", index);
+        ini.SetLongValue("nexion", key, m_Settings.iNexionMobileSettings[index], nullptr, true);
+    }
+
+    ini.SetLongValue("nexion", "GeneralCameraSensitivity", ClampSetting(m_Settings.iNexionGeneralCameraSensitivity, 1, 100, 50), nullptr, true);
+    ini.SetLongValue("nexion", "AimCameraSensitivity", ClampSetting(m_Settings.iNexionAimCameraSensitivity, 1, 100, 50), nullptr, true);
+    ini.SetLongValue("nexion", "MasterVolume", ClampPercent(m_Settings.iNexionMasterVolume, 100), nullptr, true);
+    ini.SetLongValue("nexion", "MusicVolume", ClampPercent(m_Settings.iNexionMusicVolume, 100), nullptr, true);
+    ini.SetLongValue("nexion", "RadioVolume", ClampPercent(m_Settings.iNexionRadioVolume, 100), nullptr, true);
+    ini.SetBoolValue("nexion", "ParticleEffects", m_Settings.bNexionParticleEffects, nullptr, true);
+    ini.SetBoolValue("nexion", "DistanceFog", m_Settings.bNexionDistanceFog, nullptr, true);
+    ini.SetBoolValue("nexion", "Skidmarks", m_Settings.bNexionSkidmarks, nullptr, true);
+    ini.SetLongValue("nexion", "MiniMapBlipRange", ClampSetting(m_Settings.iNexionMiniMapBlipRange, 200, 1000, 480), nullptr, true);
+
+    for (int context = 0; context < stSettings::NexionControlContextCount; ++context)
+    {
+        for (int button = 0; button < stSettings::NexionControlCount; ++button)
+        {
+            char key[64]{};
+            std::snprintf(key, sizeof(key), "Control%02d_%02d_X", context, button);
+            ini.SetLongValue("nexion", key, m_Settings.iNexionControlX[context][button], nullptr, true);
+            std::snprintf(key, sizeof(key), "Control%02d_%02d_Y", context, button);
+            ini.SetLongValue("nexion", key, m_Settings.iNexionControlY[context][button], nullptr, true);
+            std::snprintf(key, sizeof(key), "Control%02d_%02d_Size", context, button);
+            ini.SetLongValue("nexion", key, m_Settings.iNexionControlSize[context][button], nullptr, true);
+            std::snprintf(key, sizeof(key), "Control%02d_%02d_Opacity", context, button);
+            ini.SetLongValue("nexion", key, m_Settings.iNexionControlOpacity[context][button], nullptr, true);
+        }
+        for (int element = 0; element < stSettings::NexionHudElementCount; ++element)
+        {
+            char key[64]{};
+            std::snprintf(key, sizeof(key), "Hud%02d_%02d_X", context, element);
+            ini.SetLongValue("nexion", key, m_Settings.iNexionHudX[context][element], nullptr, true);
+            std::snprintf(key, sizeof(key), "Hud%02d_%02d_Y", context, element);
+            ini.SetLongValue("nexion", key, m_Settings.iNexionHudY[context][element], nullptr, true);
+            std::snprintf(key, sizeof(key), "Hud%02d_%02d_Size", context, element);
+            ini.SetLongValue("nexion", key, m_Settings.iNexionHudSize[context][element], nullptr, true);
+            std::snprintf(key, sizeof(key), "Hud%02d_%02d_Opacity", context, element);
+            ini.SetLongValue("nexion", key, m_Settings.iNexionHudOpacity[context][element], nullptr, true);
+        }
+    }
+
+    const SI_Error saveResult = ini.SaveFile(path);
+    if (saveResult < 0)
+    {
+        Log("Nexion settings: can't save %s (%d)", path, static_cast<int>(saveResult));
+    }
+}
