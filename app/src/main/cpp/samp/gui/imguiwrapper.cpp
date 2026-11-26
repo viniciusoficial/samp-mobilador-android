@@ -115,7 +115,6 @@ void ImGuiWrapper::render()
 		const float scale = std::max(0.5f, std::min(display.x / 2048.0f, display.y / 921.0f));
 		ImDrawList* background = ImGui::GetBackgroundDrawList();
 		NexionMiniMap::Draw(background, display, scale);
-		NexionControls::Draw(background, display, scale);
 	}
 	PauseMenu::Render();
 	ImGui::EndFrame();

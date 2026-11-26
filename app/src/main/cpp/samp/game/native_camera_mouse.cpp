@@ -4,151 +4,380 @@
 #include "Camera.h"
 #include "Cam.h"
 #include "CFirstPersonCamera.hpp"
+#include "Entity/CPedGTA.h"
+#include "Collision/ColPoint.h"
 #include "pad.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <cstdint>
+#include <cstring>
 #include <mutex>
 
-namespace {
-std::mutex g_mutex;
-float g_pendingX = 0.0f;
-float g_pendingY = 0.0f;
-float g_smoothX = 0.0f;
-float g_smoothY = 0.0f;
+extern uint32_t(*CWorld__ProcessLineOfSight)(
+    CVector*, CVector*, CColPoint*, CEntityGTA**,
+    bool, bool, bool, bool, bool, bool, bool, bool);
 
-std::atomic<uint32_t> g_received{0};
-std::atomic<uint32_t> g_applied{0};
-
-std::atomic<float> g_maxDelta{0.0f};
-std::atomic<float> g_smoothing{0.0f};
-std::atomic<float> g_aimSensitivity{0.85f};
-std::atomic<bool> g_vehicleAutoCenter{false};
-
-// Persistent target orientation to prevent FollowPed_SA / FollowCar_SA
-// from snapping vertical Alpha back toward 0.0f.
-bool g_hasDesiredState = false;
-CCam* g_lastCamPtr = nullptr;
-uint16_t g_lastMode = 0xFFFF;
-float g_desiredAlpha = 0.0f;
-float g_desiredBeta = 0.0f;
-bool g_hadMouseInputThisFrame = false;
-
-constexpr float kBaseSensitivity = 0.0024f;
-constexpr float kMaxAccumulatedDelta = 65536.0f;
-constexpr float kFollowMinAlpha = -1.20f;
-constexpr float kFollowMaxAlpha = 1.10f;
-constexpr float kAimMinAlpha = -1.48f;
-constexpr float kAimMaxAlpha = 1.48f;
-constexpr float kPi = 3.14159265358979323846f;
-constexpr float kTwoPi = 6.28318530717958647692f;
-
-float WrapAngle(float angle)
+namespace
 {
-    if (!std::isfinite(angle))
-        return 0.0f;
-    while (angle > kPi)
-        angle -= kTwoPi;
-    while (angle < -kPi)
-        angle += kTwoPi;
-    return angle;
-}
+    constexpr uintptr_t kOff_FollowPed_Alpha = 0x009F9648;
+    constexpr float kPi     = 3.14159265358979323846f;
+    constexpr float kTwoPi  = 6.28318530717958647692f;
+    constexpr float kHalfPi = 1.57079632679489661923f;
 
-bool IsAimCamMode(uint16_t mode)
-{
-    switch (mode)
+    // Mouse radians per input count (tuned for responsive desktop SA-MP feel)
+    constexpr float kBaseSensH       = 0.0028f;
+    constexpr float kBaseSensV       = 0.0024f;
+    constexpr float kMaxAccumDelta   = 65536.0f;
+
+    // Vertical pitch bounds (radians)
+    constexpr float kMinOrbitAlpha   = -1.05f;
+    constexpr float kMaxOrbitAlpha   =  0.72f;
+    constexpr float kMinAimAlpha     = -1.32f;
+    constexpr float kMaxAimAlpha     =  1.32f;
+
+    std::mutex g_mutex;
+    float g_pendingX = 0.0f;
+    float g_pendingY = 0.0f;
+    int   g_pendingWheel = 0;
+    float g_smoothX = 0.0f;
+    float g_smoothY = 0.0f;
+
+    bool     g_anglesInitialized = false;
+    float    g_desiredAlpha = -0.10f;
+    float    g_desiredBeta  = -kHalfPi;
+    uint16_t g_lastMode     = 0xFFFF;
+    uint32_t g_mouseIdleFrames = 9999;
+
+    std::atomic<bool>     g_mouseDrivenSession{false};
+    std::atomic<uint32_t> g_applied{0};
+    std::atomic<float>    g_maxDelta{0.0f};
+    std::atomic<float>    g_smoothing{0.0f};
+    std::atomic<float>    g_aimSensitivity{0.85f};
+    std::atomic<bool>     g_vehicleAutoCenter{false};
+    std::atomic<uint8_t>  g_buttonMask{0};
+
+    float WrapAngle(float a)
     {
-        case MODE_SNIPER:
-        case MODE_ROCKETLAUNCHER:
-        case MODE_1STPERSON:
-        case MODE_M16_1STPERSON:
-        case MODE_SNIPER_RUNABOUT:
-        case MODE_ROCKETLAUNCHER_RUNABOUT:
-        case MODE_M16_1STPERSON_RUNABOUT:
-        case MODE_HELICANNON_1STPERSON:
-        case MODE_CAMERA:
-        case MODE_ROCKETLAUNCHER_HS:
-        case MODE_ROCKETLAUNCHER_RUNABOUT_HS:
-        case MODE_AIMWEAPON:
-        case MODE_AIMWEAPON_FROMCAR:
-        case MODE_AIMWEAPON_ATTACHED:
-            return true;
-        default:
+        if (!std::isfinite(a))
+            return 0.0f;
+        a = std::fmod(a + kPi, kTwoPi);
+        if (a < 0.0f)
+            a += kTwoPi;
+        return a - kPi;
+    }
+
+    float SafeNormalize(CVector& v)
+    {
+        const float lenSq = v.x * v.x + v.y * v.y + v.z * v.z;
+        if (lenSq <= 1e-8f || !std::isfinite(lenSq))
+            return 0.0f;
+        const float len = std::sqrt(lenSq);
+        const float inv = 1.0f / len;
+        v.x *= inv;
+        v.y *= inv;
+        v.z *= inv;
+        return len;
+    }
+
+    CVector FrontFromAngles(float alpha, float beta)
+    {
+        const float cosA = std::cos(alpha);
+        return CVector(
+            -cosA * std::cos(beta),
+            -cosA * std::sin(beta),
+            std::sin(alpha)
+        );
+    }
+
+    CVector UpFromFront(const CVector& front)
+    {
+        // World up = (0, 0, 1); Right = Front x WorldUp = (front.y, -front.x, 0)
+        CVector right(front.y, -front.x, 0.0f);
+        if (SafeNormalize(right) <= 1e-5f)
+            return CVector(0.0f, 0.0f, 1.0f);
+        // Up = Right x Front
+        CVector up(
+            right.y * front.z - right.z * front.y,
+            right.z * front.x - right.x * front.z,
+            right.x * front.y - right.y * front.x
+        );
+        if (SafeNormalize(up) <= 1e-5f)
+            return CVector(0.0f, 0.0f, 1.0f);
+        return up;
+    }
+
+    bool IsThirdPersonOrbitMode(uint16_t mode)
+    {
+        switch (mode)
+        {
+            case MODE_FOLLOWPED:
+            case MODE_FOLLOW_PED_WITH_BIND:
+            case MODE_BEHINDCAR:
+            case MODE_BEHINDBOAT:
+            case MODE_CAM_ON_A_STRING:
+            case MODE_WHEELCAM:
+            case MODE_GTACLASSIC:
+            case MODE_FIGHT_CAM:
+            case MODE_FIGHT_CAM_RUNABOUT:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsVehicleCamMode(uint16_t mode)
+    {
+        switch (mode)
+        {
+            case MODE_BEHINDCAR:
+            case MODE_BEHINDBOAT:
+            case MODE_CAM_ON_A_STRING:
+            case MODE_WHEELCAM:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsAimCamMode(uint16_t mode)
+    {
+        switch (mode)
+        {
+            case MODE_AIMING:
+            case MODE_SNIPER:
+            case MODE_ROCKETLAUNCHER:
+            case MODE_1STPERSON:
+            case MODE_M16_1STPERSON:
+            case MODE_SNIPER_RUNABOUT:
+            case MODE_ROCKETLAUNCHER_RUNABOUT:
+            case MODE_1STPERSON_RUNABOUT:
+            case MODE_M16_1STPERSON_RUNABOUT:
+            case MODE_HELICANNON_1STPERSON:
+            case MODE_CAMERA:
+            case MODE_ROCKETLAUNCHER_HS:
+            case MODE_ROCKETLAUNCHER_RUNABOUT_HS:
+            case MODE_AIMWEAPON:
+            case MODE_AIMWEAPON_FROMCAR:
+            case MODE_AIMWEAPON_ATTACHED:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsPedBodyAimMode(uint16_t mode)
+    {
+        switch (mode)
+        {
+            case MODE_AIMWEAPON:
+            case MODE_AIMWEAPON_FROMCAR:
+            case MODE_AIMWEAPON_ATTACHED:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsControllableCamMode(uint16_t mode)
+    {
+        return IsThirdPersonOrbitMode(mode) || IsAimCamMode(mode);
+    }
+
+    bool IsMouseCameraActive()
+    {
+        if (PcInputIsNativeInterfaceActive())
             return false;
+        return PcInputIsEnabledForTouch() || g_mouseDrivenSession.load(std::memory_order_acquire);
     }
-}
 
-bool IsVehicleFollowMode(uint16_t mode)
-{
-    switch (mode)
+    void InitAnglesFromCam(const CCam* cam, bool aimMode)
     {
-        case MODE_BEHINDCAR:
-        case MODE_BEHINDBOAT:
-        case MODE_CAM_ON_TRAIN_ROOF:
-            return true;
-        default:
-            return false;
-    }
-}
+        float alpha = cam->Alpha;
+        float beta  = cam->m_fHorizontalAngle;
 
-bool IsPedFollowMode(uint16_t mode)
-{
-    switch (mode)
+        CVector f = cam->Front;
+        if (SafeNormalize(f) > 0.01f)
+        {
+            const float vecAlpha = std::asin(std::clamp(f.z, -0.95f, 0.95f));
+            const float vecBeta  = std::atan2(-f.y, -f.x);
+            if (!std::isfinite(alpha) || std::fabs(alpha) < 1e-5f)
+                alpha = vecAlpha;
+            beta = vecBeta;
+        }
+
+        const float minA = aimMode ? kMinAimAlpha : kMinOrbitAlpha;
+        const float maxA = aimMode ? kMaxAimAlpha : kMaxOrbitAlpha;
+        g_desiredAlpha = std::clamp(std::isfinite(alpha) ? alpha : -0.10f, minA, maxA);
+        g_desiredBeta  = WrapAngle(std::isfinite(beta) ? beta : -kHalfPi);
+        g_anglesInitialized = true;
+    }
+
+    void AlignPedToCameraDirection(CCamera& camera, float beta)
     {
-        case MODE_FOLLOWPED:
-        case MODE_CAM_ON_A_STRING:
-        case MODE_FOLLOW_PED_WITH_BIND:
-            return true;
-        default:
-            return false;
+        const float pedYaw = WrapAngle(beta + kHalfPi);
+        camera.m_fOrientation = pedYaw;
+        CPedGTA* pPed = GamePool_FindPlayerPed();
+        if (pPed != nullptr && !pPed->IsInVehicle())
+        {
+            pPed->m_fCurrentRotation = pedYaw;
+            pPed->m_fAimingRotation  = pedYaw;
+        }
     }
-}
 
-bool IsControllableCamMode(uint16_t mode)
-{
-    return IsAimCamMode(mode) || IsPedFollowMode(mode) || IsVehicleFollowMode(mode);
-}
-
-void WriteStaticFollowAlphas(float alpha)
-{
-#if !VER_x32
-    if (g_libGTASA != 0)
+    void DrainAndIntegrateMouse(const CCam* cam, bool aimMode)
     {
-        // Verified in libGame.so (arm64-v8a):
-        // FollowPed_SA reads/lerps Alpha toward *(float*)(g_libGTASA + 0x9F9648)
-        // FollowCar_SA reads/lerps Alpha toward *(float*)(g_libGTASA + 0x9F9670)
-        *reinterpret_cast<float*>(g_libGTASA + 0x9F9648) = alpha;
-        *reinterpret_cast<float*>(g_libGTASA + 0x9F9670) = alpha;
+        float rawDx = 0.0f;
+        float rawDy = 0.0f;
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            rawDx = g_pendingX;
+            rawDy = g_pendingY;
+            g_pendingX = 0.0f;
+            g_pendingY = 0.0f;
+            g_pendingWheel = 0;
+        }
+
+        const float maxDelta = g_maxDelta.load(std::memory_order_relaxed);
+        if (maxDelta > 0.0f)
+        {
+            rawDx = std::clamp(rawDx, -maxDelta, maxDelta);
+            rawDy = std::clamp(rawDy, -maxDelta, maxDelta);
+        }
+
+        const float smooth = g_smoothing.load(std::memory_order_relaxed);
+        float dx = rawDx;
+        float dy = rawDy;
+        if (smooth > 0.001f)
+        {
+            const float blend = 1.0f - smooth;
+            g_smoothX = g_smoothX * smooth + rawDx * blend;
+            g_smoothY = g_smoothY * smooth + rawDy * blend;
+            if (std::fabs(g_smoothX) < 0.0005f) g_smoothX = 0.0f;
+            if (std::fabs(g_smoothY) < 0.0005f) g_smoothY = 0.0f;
+            dx = g_smoothX;
+            dy = g_smoothY;
+        }
+        else
+        {
+            g_smoothX = 0.0f;
+            g_smoothY = 0.0f;
+        }
+
+        const float aimMult = aimMode ? g_aimSensitivity.load(std::memory_order_relaxed) : 1.0f;
+        float fovMult = 1.0f;
+        if (aimMode && cam != nullptr && std::isfinite(cam->FOV) && cam->FOV > 5.0f && cam->FOV < 65.0f)
+        {
+            fovMult = std::clamp(cam->FOV / 70.0f, 0.20f, 1.0f);
+        }
+
+        if (dx != 0.0f || dy != 0.0f)
+        {
+            g_desiredBeta -= dx * kBaseSensH * aimMult * fovMult;
+            g_desiredBeta = WrapAngle(g_desiredBeta);
+
+            const float minA = aimMode ? kMinAimAlpha : kMinOrbitAlpha;
+            const float maxA = aimMode ? kMaxAimAlpha : kMaxOrbitAlpha;
+            g_desiredAlpha = std::clamp(g_desiredAlpha - dy * kBaseSensV * aimMult * fovMult, minA, maxA);
+
+            g_mouseIdleFrames = 0;
+            g_applied.fetch_add(1, std::memory_order_relaxed);
+        }
+        else if (g_mouseIdleFrames < 6000)
+        {
+            ++g_mouseIdleFrames;
+        }
     }
-#endif
-}
+
+    float ResolveOrbitDistance(const CCam* cam, const CVector& oldFront, CVector& outPivot)
+    {
+        CVector entityPos(0.0f, 0.0f, 0.0f);
+        bool hasEntityPos = false;
+
+        if (cam->CamTargetEntity != nullptr)
+        {
+            const auto* targetEnt = reinterpret_cast<const CEntityGTA*>(cam->CamTargetEntity);
+            entityPos = targetEnt->GetPosition();
+            hasEntityPos = std::isfinite(entityPos.x) && std::isfinite(entityPos.y) && std::isfinite(entityPos.z);
+        }
+        if (!hasEntityPos)
+        {
+            if (const CPedGTA* pPed = GamePool_FindPlayerPed())
+            {
+                entityPos = pPed->GetPosition();
+                hasEntityPos = std::isfinite(entityPos.x) && std::isfinite(entityPos.y) && std::isfinite(entityPos.z);
+            }
+        }
+
+        float dist = (std::isfinite(cam->m_fCameraDistance) && cam->m_fCameraDistance >= 1.2f && cam->m_fCameraDistance <= 25.0f)
+            ? cam->m_fCameraDistance
+            : (IsVehicleCamMode(static_cast<uint16_t>(cam->m_nMode)) ? 6.2f : 3.4f);
+
+        if (hasEntityPos)
+        {
+            CVector approxTarget = entityPos;
+            approxTarget.z += IsVehicleCamMode(static_cast<uint16_t>(cam->m_nMode)) ? 0.55f : 0.65f;
+
+            const CVector delta(
+                approxTarget.x - cam->Source.x,
+                approxTarget.y - cam->Source.y,
+                approxTarget.z - cam->Source.z
+            );
+            const float proj = delta.x * oldFront.x + delta.y * oldFront.y + delta.z * oldFront.z;
+            if (std::isfinite(proj) && proj >= 1.0f && proj <= 28.0f)
+            {
+                dist = proj;
+            }
+        }
+
+        outPivot = CVector(
+            cam->Source.x + oldFront.x * dist,
+            cam->Source.y + oldFront.y * dist,
+            cam->Source.z + oldFront.z * dist
+        );
+        return dist;
+    }
 } // namespace
 
 void NativeCameraMouseEnqueue(float dx, float dy)
 {
     if (!std::isfinite(dx) || !std::isfinite(dy))
         return;
-
+    if (dx != 0.0f || dy != 0.0f)
+        g_mouseDrivenSession.store(true, std::memory_order_release);
     std::lock_guard<std::mutex> lock(g_mutex);
-    g_pendingX = std::clamp(g_pendingX + dx, -kMaxAccumulatedDelta, kMaxAccumulatedDelta);
-    g_pendingY = std::clamp(g_pendingY + dy, -kMaxAccumulatedDelta, kMaxAccumulatedDelta);
-    const uint32_t count = ++g_received;
-    if (count % 120 == 1)
-    {
-        Log("[DIRECT-MOUSE] received=(%.2f,%.2f) pending=(%.2f,%.2f)",
-            dx, dy, g_pendingX, g_pendingY);
-    }
+    g_pendingX = std::clamp(g_pendingX + dx, -kMaxAccumDelta, kMaxAccumDelta);
+    g_pendingY = std::clamp(g_pendingY + dy, -kMaxAccumDelta, kMaxAccumDelta);
+}
+
+void NativeCameraMouseEnqueueWheel(int steps)
+{
+    if (steps == 0)
+        return;
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_pendingWheel = std::clamp(g_pendingWheel + steps, -16, 16);
+}
+
+void NativeCameraMouseSetButtons(uint8_t buttonMask)
+{
+    g_buttonMask.store(buttonMask, std::memory_order_release);
 }
 
 void NativeCameraMouseReset()
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_pendingX = 0.0f;
-    g_pendingY = 0.0f;
-    g_smoothX = 0.0f;
-    g_smoothY = 0.0f;
-    g_hadMouseInputThisFrame = false;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_pendingX = 0.0f;
+        g_pendingY = 0.0f;
+        g_pendingWheel = 0;
+        g_smoothX = 0.0f;
+        g_smoothY = 0.0f;
+    }
+    if (!PcInputIsEnabledForTouch())
+    {
+        g_mouseDrivenSession.store(false, std::memory_order_release);
+        g_anglesInitialized = false;
+    }
 }
 
 void NativeCameraMouseSetOptions(float maxDelta, float smoothing, float aimSensitivity, bool vehicleAutoCenter)
@@ -161,145 +390,171 @@ void NativeCameraMouseSetOptions(float maxDelta, float smoothing, float aimSensi
 
 uint32_t NativeCameraMouseGetAppliedCount()
 {
-    return g_applied.load();
+    return g_applied.load(std::memory_order_relaxed);
 }
 
 void NativeCameraMousePreProcess(CCamera& camera, CCam* targetCam)
 {
-    if (!targetCam || !PcInputIsEnabledForTouch() || CFirstPersonCamera::IsEnabled())
+    if (targetCam == nullptr || camera.m_nActiveCam >= 3)
         return;
     CCam* activeCam = &camera.m_aCams[camera.m_nActiveCam];
     if (targetCam != activeCam)
         return;
 
-    float rawDx = 0.0f;
-    float rawDy = 0.0f;
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        rawDx = g_pendingX;
-        rawDy = g_pendingY;
-        g_pendingX = 0.0f;
-        g_pendingY = 0.0f;
-    }
-
-    const float maxDelta = g_maxDelta.load();
-    if (maxDelta > 0.0f)
-    {
-        rawDx = std::clamp(rawDx, -maxDelta, maxDelta);
-        rawDy = std::clamp(rawDy, -maxDelta, maxDelta);
-    }
-
-    const float smooth = g_smoothing.load();
-    float dx = rawDx;
-    float dy = rawDy;
-    if (smooth > 0.001f)
-    {
-        const float alphaBlend = 1.0f - smooth;
-        g_smoothX = g_smoothX * smooth + rawDx * alphaBlend;
-        g_smoothY = g_smoothY * smooth + rawDy * alphaBlend;
-        if (std::fabs(g_smoothX) < 0.0005f) g_smoothX = 0.0f;
-        if (std::fabs(g_smoothY) < 0.0005f) g_smoothY = 0.0f;
-        dx = g_smoothX;
-        dy = g_smoothY;
-    }
-    else
-    {
-        g_smoothX = 0.0f;
-        g_smoothY = 0.0f;
-    }
-
     const uint16_t mode = static_cast<uint16_t>(targetCam->m_nMode);
-    if (!IsControllableCamMode(mode))
+    if (!IsMouseCameraActive() || !IsControllableCamMode(mode))
     {
-        g_hasDesiredState = false;
-        g_lastCamPtr = targetCam;
+        g_anglesInitialized = false;
         g_lastMode = mode;
-        g_hadMouseInputThisFrame = false;
-        return;
-    }
-
-    if (!std::isfinite(targetCam->Alpha) || !std::isfinite(targetCam->m_fHorizontalAngle))
-    {
-        g_hasDesiredState = false;
-        g_hadMouseInputThisFrame = false;
         return;
     }
 
     const bool aimMode = IsAimCamMode(mode);
-    const bool vehicleMode = IsVehicleFollowMode(mode);
-    const float minAlpha = aimMode ? kAimMinAlpha : kFollowMinAlpha;
-    const float maxAlpha = aimMode ? kAimMaxAlpha : kFollowMaxAlpha;
+    const bool wasAimMode = (g_lastMode != 0xFFFF) && IsAimCamMode(g_lastMode);
 
-    const bool camChanged = (targetCam != g_lastCamPtr) || (mode != g_lastMode) ||
-                            targetCam->ResetStatics || targetCam->bBehindPlayerDesired;
-    if (!g_hasDesiredState || camChanged)
+    if (!g_anglesInitialized)
     {
-        g_desiredAlpha = std::clamp(targetCam->Alpha, minAlpha, maxAlpha);
-        g_desiredBeta = WrapAngle(targetCam->m_fHorizontalAngle);
-        g_hasDesiredState = true;
-        g_lastCamPtr = targetCam;
-        g_lastMode = mode;
+        InitAnglesFromCam(targetCam, aimMode);
+    }
+    else if (aimMode && !wasAimMode)
+    {
+        // Entering aim from free-look: keep camera look direction and turn ped toward camera,
+        // NOT camera toward ped's sideways body rotation.
+        g_desiredAlpha = std::clamp(g_desiredAlpha, kMinAimAlpha, kMaxAimAlpha);
+        AlignPedToCameraDirection(camera, g_desiredBeta);
+    }
+    else if (!aimMode && wasAimMode)
+    {
+        // Leaving aim back to orbit: preserve where player was aiming seamlessly.
+        g_desiredAlpha = std::clamp(g_desiredAlpha, kMinOrbitAlpha, kMaxOrbitAlpha);
     }
 
-    const bool hasInput = (dx != 0.0f || dy != 0.0f);
-    g_hadMouseInputThisFrame = hasInput;
-    if (hasInput)
-        ++g_applied;
+    DrainAndIntegrateMouse(targetCam, aimMode);
 
-    const float sens = kBaseSensitivity * (aimMode ? g_aimSensitivity.load() : 1.0f);
-    if (hasInput)
-    {
-        g_desiredBeta = WrapAngle(g_desiredBeta - dx * sens);
-        g_desiredAlpha = std::clamp(g_desiredAlpha + dy * sens, minAlpha, maxAlpha);
+    // Push desired world camera angles directly before CCam::Process runs.
+    targetCam->Alpha = g_desiredAlpha;
+    targetCam->m_fTrueAlpha = g_desiredAlpha;
+    targetCam->m_fIdealAlpha = g_desiredAlpha;
+    targetCam->AlphaSpeed = 0.0f;
 
-        targetCam->m_fHorizontalAngle = g_desiredBeta;
-        targetCam->BetaSpeed = 0.0f;
-        targetCam->m_fBetaSpeedOverOneFrame = 0.0f;
-        targetCam->m_fTrueBeta = g_desiredBeta;
+    targetCam->m_fHorizontalAngle = g_desiredBeta;
+    targetCam->m_fTrueBeta = g_desiredBeta;
+    targetCam->BetaSpeed = 0.0f;
 
-        targetCam->Alpha = g_desiredAlpha;
-        targetCam->AlphaSpeed = 0.0f;
-        targetCam->m_fAlphaSpeedOverOneFrame = 0.0f;
-        targetCam->m_fTrueAlpha = g_desiredAlpha;
-        targetCam->m_fIdealAlpha = g_desiredAlpha;
-    }
-    else if (vehicleMode && g_vehicleAutoCenter.load())
-    {
-        g_desiredBeta = WrapAngle(targetCam->m_fHorizontalAngle);
-    }
-
+    targetCam->m_bFixingBeta = false;
     targetCam->ResetKeyboardStatics = true;
+
+    if (g_libGTASA != 0 && (mode == MODE_FOLLOWPED || mode == MODE_FOLLOW_PED_WITH_BIND))
+    {
+        *reinterpret_cast<float*>(g_libGTASA + kOff_FollowPed_Alpha) = g_desiredAlpha;
+    }
+
+    if (IsPedBodyAimMode(mode))
+    {
+        AlignPedToCameraDirection(camera, g_desiredBeta);
+    }
+
+    g_lastMode = mode;
 }
 
 void NativeCameraMousePostProcess(CCamera& camera, CCam* targetCam)
 {
-    if (!targetCam || !g_hasDesiredState || !PcInputIsEnabledForTouch() || CFirstPersonCamera::IsEnabled())
+    if (targetCam == nullptr || camera.m_nActiveCam >= 3)
         return;
     CCam* activeCam = &camera.m_aCams[camera.m_nActiveCam];
-    if (targetCam != activeCam)
-        return;
-    const uint16_t mode = static_cast<uint16_t>(targetCam->m_nMode);
-    if (!IsControllableCamMode(mode) || targetCam->LookingBehind || targetCam->bBehindPlayerDesired)
+    if (targetCam != activeCam || !g_anglesInitialized)
         return;
 
-    if (g_hadMouseInputThisFrame)
+    const uint16_t mode = static_cast<uint16_t>(targetCam->m_nMode);
+    if (!IsMouseCameraActive() || !IsControllableCamMode(mode))
+        return;
+
+    // Optional vehicle auto-center only if explicitly enabled and mouse is idle
+    if (IsVehicleCamMode(mode) && g_vehicleAutoCenter.load(std::memory_order_relaxed) && g_mouseIdleFrames > 45)
     {
-        targetCam->Alpha = g_desiredAlpha;
-        targetCam->m_fTrueAlpha = g_desiredAlpha;
-        targetCam->m_fIdealAlpha = g_desiredAlpha;
-        targetCam->m_fHorizontalAngle = g_desiredBeta;
-        targetCam->m_fTrueBeta = g_desiredBeta;
-        targetCam->AlphaSpeed = 0.0f;
-        targetCam->BetaSpeed = 0.0f;
-        targetCam->m_fAlphaSpeedOverOneFrame = 0.0f;
-        targetCam->m_fBetaSpeedOverOneFrame = 0.0f;
+        if (std::isfinite(targetCam->m_fHorizontalAngle))
+            g_desiredBeta = WrapAngle(targetCam->m_fHorizontalAngle);
+        if (std::isfinite(targetCam->Alpha))
+            g_desiredAlpha = std::clamp(targetCam->Alpha, kMinOrbitAlpha, kMaxOrbitAlpha);
+        return;
     }
-    targetCam->ResetKeyboardStatics = true;
+
+    const CVector newFront = FrontFromAngles(g_desiredAlpha, g_desiredBeta);
+    const CVector newUp = UpFromFront(newFront);
+
+    // For third-person orbit modes, move the actual world camera position (Source)
+    // whenever FollowPed_SA / FollowCar_SA clamped Alpha or drifted HorizontalAngle.
+    if (IsThirdPersonOrbitMode(mode) && !CFirstPersonCamera::IsEnabled())
+    {
+        const float alphaDiff = std::fabs(targetCam->Alpha - g_desiredAlpha);
+        const float betaDiff  = std::fabs(WrapAngle(targetCam->m_fHorizontalAngle - g_desiredBeta));
+        if (alphaDiff > 1e-4f || betaDiff > 1e-4f)
+        {
+            CVector oldFront = targetCam->Front;
+            if (SafeNormalize(oldFront) <= 1e-4f)
+                oldFront = FrontFromAngles(targetCam->Alpha, targetCam->m_fHorizontalAngle);
+
+            CVector pivot;
+            const float dist = ResolveOrbitDistance(targetCam, oldFront, pivot);
+            CVector desiredSource(
+                pivot.x - newFront.x * dist,
+                pivot.y - newFront.y * dist,
+                pivot.z - newFront.z * dist
+            );
+
+            // Prevent world camera from clipping under ground or through walls when pitching steeply.
+            if (CWorld__ProcessLineOfSight != nullptr)
+            {
+                CColPoint colPoint{};
+                CEntityGTA* hitEntity = nullptr;
+                if (CWorld__ProcessLineOfSight(
+                        &pivot, &desiredSource, &colPoint, &hitEntity,
+                        true, false, false, true, false, false, true, false))
+                {
+                    const CVector toHit(
+                        colPoint.m_vecPoint.x - pivot.x,
+                        colPoint.m_vecPoint.y - pivot.y,
+                        colPoint.m_vecPoint.z - pivot.z
+                    );
+                    const float hitDist = std::sqrt(toHit.x * toHit.x + toHit.y * toHit.y + toHit.z * toHit.z);
+                    if (std::isfinite(hitDist))
+                    {
+                        const float safeDist = std::clamp(hitDist - 0.22f, 0.55f, dist);
+                        desiredSource.x = pivot.x - newFront.x * safeDist;
+                        desiredSource.y = pivot.y - newFront.y * safeDist;
+                        desiredSource.z = pivot.z - newFront.z * safeDist;
+                    }
+                }
+            }
+
+            targetCam->Source = desiredSource;
+        }
+    }
+
+    targetCam->Alpha = g_desiredAlpha;
+    targetCam->m_fTrueAlpha = g_desiredAlpha;
+    targetCam->m_fIdealAlpha = g_desiredAlpha;
+    targetCam->AlphaSpeed = 0.0f;
+
+    targetCam->m_fHorizontalAngle = g_desiredBeta;
+    targetCam->m_fTrueBeta = g_desiredBeta;
+    targetCam->BetaSpeed = 0.0f;
+
+    targetCam->Front = newFront;
+    targetCam->Up = newUp;
+
+    if (g_libGTASA != 0 && (mode == MODE_FOLLOWPED || mode == MODE_FOLLOW_PED_WITH_BIND))
+    {
+        *reinterpret_cast<float*>(g_libGTASA + kOff_FollowPed_Alpha) = g_desiredAlpha;
+    }
+
+    if (IsPedBodyAimMode(mode))
+    {
+        AlignPedToCameraDirection(camera, g_desiredBeta);
+    }
 }
 
 void NativeCameraMouseApply(CCamera& camera)
 {
-    // Mouse camera application now runs inside CCam__Process_hook around CCam::Process
-    // to guarantee FollowPed_SA / FollowCar_SA / Process_AimWeapon cannot snap Alpha back.
     (void)camera;
 }

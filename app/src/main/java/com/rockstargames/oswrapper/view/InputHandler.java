@@ -88,8 +88,34 @@ public class InputHandler implements GameViewHandler {
     private int mouseLogCounter;
     private int touchLogCounter;
     private int mouseEventCount;
+    private Boolean externalInputPresent;
+    private long lastExternalInputScanMs;
 
     private InputHandler() {}
+
+    private boolean detectExternalKeyboardOrMouse() {
+        for (int deviceId : InputDevice.getDeviceIds()) {
+            InputDevice device = InputDevice.getDevice(deviceId);
+            if (device == null || device.isVirtual()) continue;
+            int sources = device.getSources();
+            boolean mouse = (sources & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE;
+            boolean keyboard = (sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
+                    && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC;
+            if (mouse || keyboard) return true;
+        }
+        return false;
+    }
+
+    private void syncExternalInputPresence(boolean force) {
+        long now = SystemClock.uptimeMillis();
+        if (!force && externalInputPresent != null && now - lastExternalInputScanMs < 500L) return;
+        lastExternalInputScanMs = now;
+        boolean present = detectExternalKeyboardOrMouse();
+        if (externalInputPresent == null || externalInputPresent != present) {
+            externalInputPresent = present;
+            KeyboardMouseBridge.nativeSetExternalInputPresent(present);
+        }
+    }
 
     // -----------------------------------------------------------------------
     // Controller count (replaces Kotlin Companion)
@@ -157,6 +183,7 @@ public class InputHandler implements GameViewHandler {
 
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         synchronizeNativeInterfaceState();
+        syncExternalInputPresence(false);
         if (KeyboardMouseSettings.captureKey(event)) {
             return true;
         }
@@ -264,6 +291,7 @@ public class InputHandler implements GameViewHandler {
 
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         synchronizeNativeInterfaceState();
+        syncExternalInputPresence(false);
         int source = event != null ? event.getSource() : 0;
         boolean isGamepad = (source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
                 || (source & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK;
@@ -304,6 +332,7 @@ public class InputHandler implements GameViewHandler {
             return false;
         }
         synchronizeNativeInterfaceState();
+        syncExternalInputPresence(false);
         if (isMouseSource(event.getSource())) {
             return onMouseMotionEvent(event, false);
         }
@@ -363,10 +392,12 @@ public class InputHandler implements GameViewHandler {
     public final boolean onTouchEvent(MotionEvent event) {
         Intrinsics.checkNotNullParameter(event, "event");
         synchronizeNativeInterfaceState();
+        syncExternalInputPresence(false);
         if (isMouseSource(event.getSource())) {
             return onMouseMotionEvent(event, false);
         }
-        if (KeyboardMouseSettings.isEnabled() && !isHardInterfaceBlocking()) {
+        if (KeyboardMouseSettings.isEnabled() && externalInputPresent &&
+                !isHardInterfaceBlocking()) {
             if (touchLogCounter++ % 60 == 0) {
                 Log.d(TAG, "[TOUCH-MOUSE] blocked reason=PC gameplay mode");
             }
@@ -429,6 +460,7 @@ public class InputHandler implements GameViewHandler {
     @Override
     public void setup(GameActivityBase activity) {
         KeyboardMouseSettings.load(activity);
+        syncExternalInputPresence(true);
         GameThread.INSTANCE.onPcInputEnabled(KeyboardMouseSettings.isEnabled());
         updatePointerCapture();
     }
@@ -452,6 +484,7 @@ public class InputHandler implements GameViewHandler {
     @Override
     public void onResume() {
         KeyboardMouseSettings.syncNativeConfig();
+        syncExternalInputPresence(true);
         updateInterfaceVisibility();
         updatePointerCapture();
     }
@@ -495,6 +528,7 @@ public class InputHandler implements GameViewHandler {
             return false;
         }
         synchronizeNativeInterfaceState();
+        syncExternalInputPresence(false);
         return onMouseMotionEvent(event, true);
     }
 

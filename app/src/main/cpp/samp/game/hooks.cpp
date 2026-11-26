@@ -3,6 +3,7 @@
 #include "../vendor/armhook/patch.h"
 #include "game.h"
 #include "native_camera_mouse.h"
+#include "CFirstPersonCamera.hpp"
 #include "Camera.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
@@ -554,7 +555,12 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
     }
 
     if (pGame->IsGameInputEnabled())
-        AND_TouchEvent(type, num, posX, posY);
+    {
+        if (PcInputIsEnabledForTouch() && !CFirstPersonCamera::IsEnabled())
+            AND_TouchEvent(1, 0, 0, 0);
+        else
+            AND_TouchEvent(type, num, posX, posY);
+    }
     else
         AND_TouchEvent(1, 0, 0, 0);
 }
@@ -872,8 +878,9 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
     return true;
 }
 
-#include "CFirstPersonCamera.hpp"
 //#include "CHandlingDefault.h"
+
+
 
 void (*CCam__Process)(uintptr_t thiz);
 
@@ -1608,9 +1615,14 @@ void MainMenu_OnStartSAMP()
 unsigned int (*MainMenuScreen__Update)(uintptr_t thiz, float a2);
 unsigned int MainMenuScreen__Update_hook(uintptr_t thiz, float a2)
 {
-    unsigned int ret = MainMenuScreen__Update(thiz, a2);
-    MainMenu_OnStartSAMP();
-    return ret;
+    if (!g_bPlaySAMP)
+    {
+        // Start the SAMP transition before the offline front-end update is
+        // rendered; Menu_NewGame remains the engine's world bootstrap. Keep
+        // the original update below for the engine's normal return/state flow.
+        MainMenu_OnStartSAMP();
+    }
+    return MainMenuScreen__Update(thiz, a2);
 }
 
 void (*StartGameScreen__OnNewGameCheck)();

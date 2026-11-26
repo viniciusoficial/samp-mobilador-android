@@ -31,6 +31,7 @@ std::array<std::atomic<int>, kMaxMouseButtons> g_mouseButtonAction;
 std::array<std::atomic<bool>, kMaxMouseButtons> g_mouseButtonPressed{};
 
 std::atomic<bool> g_inputEnabled{true};
+std::atomic<bool> g_externalInputPresent{false};
 std::atomic<bool> g_textEntryActive{false};
 std::atomic<bool> g_nativeInterfaceActive{false};
 std::atomic<bool> g_tabListOnly{false};
@@ -159,7 +160,9 @@ bool PcInputConsumePress(PcInputAction action)
     if (!g_inputEnabled.load() || g_nativeInterfaceActive.load() || !IsActionIndexValid(index))
         return false;
     const bool just = g_justPressed[index].exchange(false, std::memory_order_acq_rel);
-    return just || g_frameLatchedSnapshot[index];
+    const bool latched = g_frameLatchedSnapshot[index];
+    g_frameLatchedSnapshot[index] = false;
+    return just || latched;
 }
 
 bool PcInputConsumeDriverVehicleEntry()
@@ -195,9 +198,34 @@ void PcInputSetEnabled(bool enabled)
     Log("PC input C++: enabled=%d", enabled);
 }
 
+bool PcInputIsExternalInputPresent()
+{
+    return g_inputEnabled.load() && g_externalInputPresent.load();
+}
+
 bool PcInputIsEnabledForTouch()
 {
-    return g_inputEnabled.load() && !g_nativeInterfaceActive.load();
+    return g_inputEnabled.load() && g_externalInputPresent.load() &&
+           !g_nativeInterfaceActive.load();
+}
+
+void PcInputSetExternalInputPresent(bool present)
+{
+    const bool wasPresent = g_externalInputPresent.exchange(present);
+    if (wasPresent && !present)
+    {
+        for (int i = 0; i < kActionCount; ++i)
+        {
+            g_pressed[i].store(false, std::memory_order_release);
+            g_justPressed[i].store(false, std::memory_order_release);
+            g_latchedPress[i].store(false, std::memory_order_release);
+            g_frameLatchedSnapshot[i] = false;
+        }
+        g_weaponWheelSteps.store(0);
+        g_pendingWeaponSlot.store(-1);
+        NativeCameraMouseReset();
+        PcInputReleaseMouseButtons();
+    }
 }
 
 void PcInputSetAction(int action, bool pressed)
@@ -371,6 +399,13 @@ void PcInputSetMouseButton(int button, int action, bool pressed)
     if (IsActionIndexValid(resolvedAction))
         PcInputSetAction(resolvedAction, pressed);
 
+    uint8_t mask = 0;
+    for (int b = 1; b < kMaxMouseButtons; ++b)
+    {
+        if (g_mouseButtonPressed[b].load(std::memory_order_acquire))
+            mask |= static_cast<uint8_t>(1u << (b - 1));
+    }
+    NativeCameraMouseSetButtons(mask);
     if (changed)
         Log("[GAME-MOUSE] button=%d action=%d pressed=%d", button, resolvedAction, pressed);
 }
@@ -391,6 +426,7 @@ void PcInputReleaseMouseButtons()
     g_justPressed[static_cast<int>(PcInputAction::AIM)].store(false, std::memory_order_release);
     g_latchedPress[static_cast<int>(PcInputAction::FIRE)].store(false, std::memory_order_release);
     g_latchedPress[static_cast<int>(PcInputAction::AIM)].store(false, std::memory_order_release);
+    NativeCameraMouseSetButtons(0);
 }
 
 void PcInputMouseLeave()
@@ -539,6 +575,13 @@ extern "C"
     }
 
     JNIEXPORT void JNICALL
+    Java_com_gta_game_input_KeyboardMouseBridge_nativeSetExternalInputPresent(
+        JNIEnv*, jclass, jboolean present)
+    {
+        PcInputSetExternalInputPresent(present == JNI_TRUE);
+    }
+
+    JNIEXPORT void JNICALL
     Java_com_gta_game_input_KeyboardMouseBridge_nativeSetAction(
         JNIEnv*, jclass, jint action, jboolean pressed)
     {
@@ -633,7 +676,9 @@ extern "C"
         if (!g_inputEnabled.load() || g_nativeInterfaceActive.load() || direction == 0)
             return;
 
-        g_weaponWheelSteps.store(std::clamp(g_weaponWheelSteps.load() + (direction > 0 ? 1 : -1), -8, 8));
+        const int step = (direction > 0 ? 1 : -1);
+        g_weaponWheelSteps.store(std::clamp(g_weaponWheelSteps.load() + step, -8, 8));
+        NativeCameraMouseEnqueueWheel(step);
     }
 
     JNIEXPORT void JNICALL

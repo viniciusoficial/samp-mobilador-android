@@ -4,6 +4,7 @@
 #include "log.h"
 #include "settings.h"
 #include "java/jniutil.h"
+#include "../../game/pad.h"
 
 extern CGame* pGame;
 extern UI* pUI;
@@ -35,7 +36,7 @@ Keyboard::Keyboard()
 
     m_activeLayout = m_layoutLowerENG;
     m_activeLayoutType = KeyboardLayout::Type::ENG_LOWER;
-    m_activeLayout->setVisible(true);
+    m_activeLayout->setVisible(false);
     m_isEngMode = true;
 
     m_history = new KeyboardHistory();
@@ -65,26 +66,10 @@ void Keyboard::draw(ImGuiRenderer* renderer)
 
 void Keyboard::setActiveLayout(KeyboardLayout::Type type)
 {
+    m_layoutLowerENG->setVisible(false);
+    m_layoutUpperENG->setVisible(false);
+    m_layoutNUM->setVisible(false);
     m_activeLayout->setVisible(false);
-
-    switch (type)
-    {
-        case KeyboardLayout::Type::ENG_LOWER:
-            m_layoutLowerENG->setVisible(true);
-            m_activeLayout = m_layoutLowerENG;
-            break;
-
-        case KeyboardLayout::Type::ENG_UPPER:
-            m_layoutUpperENG->setVisible(true);
-            m_activeLayout = m_layoutUpperENG;
-            break;
-
-        case KeyboardLayout::Type::NUM:
-            m_layoutNUM->setVisible(true);
-            m_activeLayout = m_layoutNUM;
-            break;
-    }
-
     m_activeLayoutType = type;
 }
 
@@ -121,6 +106,14 @@ void Keyboard::show(Widget* caller)
 {
     m_history->reset();
     m_input->clear();
+    const ImVec2 chatPos = UISettings::chatPos();
+    const ImVec2 chatSize = UISettings::chatSize();
+    this->setFixedSize(ImVec2(chatSize.x, UISettings::keyboardRowHeight()));
+    this->setPosition(ImVec2(chatPos.x, chatPos.y + chatSize.y + 8.0f));
+    m_layoutLowerENG->setVisible(false);
+    m_layoutUpperENG->setVisible(false);
+    m_layoutNUM->setVisible(false);
+    this->performLayout();
     this->setVisible(true);
     pGame->EnableGameInput(false);
     m_caller = caller;

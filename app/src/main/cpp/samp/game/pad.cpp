@@ -176,8 +176,10 @@ uint32_t CPad__JumpJustDown_hook(uintptr_t thiz)
     {
         const bool nativePressed = CPad__JumpJustDown(thiz);
         const bool pcPressed = PcInputIsPressed(PcInputAction::JUMP);
+        const bool pcJustPressed = PcInputConsumePress(PcInputAction::JUMP);
         LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = nativePressed || pcPressed;
-        return nativePressed || PcInputIsJustPressed(PcInputAction::JUMP);
+        // Consume the key-down edge once; GetJump still uses the held state above.
+        return nativePressed || pcJustPressed;
     }
 }
 
@@ -267,8 +269,9 @@ uint32_t CPad__DuckJustDown_hook(uintptr_t thiz, int unk)
     }
     else
     {
-        return CPad__DuckJustDown(thiz, unk) ||
-               PcInputIsJustPressed(PcInputAction::CROUCH);
+        const bool nativePressed = CPad__DuckJustDown(thiz, unk);
+        const bool pcJustPressed = PcInputConsumePress(PcInputAction::CROUCH);
+        return nativePressed || pcJustPressed;
     }
 }
 
@@ -626,6 +629,14 @@ static float CPad__AimWeaponUpDown_hook(uintptr_t thiz, CPedGTA* pPed, bool* bUs
     return CPad__AimWeaponUpDown(thiz, pPed, bUsingController);
 }
 
+static bool (*CPad__GetForceCameraBehindPlayer)(uintptr_t thiz);
+static bool CPad__GetForceCameraBehindPlayer_hook(uintptr_t thiz)
+{
+    if (*pbyteCurrentPlayer == 0 && PcInputIsEnabledForTouch())
+        return false;
+    return CPad__GetForceCameraBehindPlayer(thiz);
+}
+
 static bool IsActiveCamSniperOrCamera()
 {
 #if !VER_x32
@@ -723,8 +734,7 @@ static void CPlayerPed__ProcessWeaponSwitch_hook(uintptr_t thiz, uintptr_t pad)
         }
 
         const int peekDir = PcInputPeekWeaponWheel();
-        if (PcInputIsFastWeaponSwitchEnabled() && peekDir != 0 &&
-            !PcInputIsPressed(PcInputAction::AIM))
+        if (PcInputIsFastWeaponSwitchEnabled() && peekDir != 0)
         {
             const int step = PcInputConsumeWeaponWheel(peekDir > 0 ? 1 : -1);
             if (step != 0)
@@ -1359,6 +1369,7 @@ void HookCPad()
     CHook::InlineHook("_ZN4CPad16GetExitTargetingEv", &CPad__GetExitTargeting_hook, &CPad__GetExitTargeting);
     CHook::InlineHook("_ZN4CPad19LookAroundLeftRightEv", &CPad__LookAroundLeftRight_hook, &CPad__LookAroundLeftRight);
     CHook::InlineHook("_ZN4CPad16LookAroundUpDownEv", &CPad__LookAroundUpDown_hook, &CPad__LookAroundUpDown);
+    CHook::InlineHook("_ZN4CPad26GetForceCameraBehindPlayerEv", &CPad__GetForceCameraBehindPlayer_hook, &CPad__GetForceCameraBehindPlayer);
     CHook::InlineHook("_ZN4CPad18AimWeaponLeftRightEP4CPedPb", &CPad__AimWeaponLeftRight_hook, &CPad__AimWeaponLeftRight);
     CHook::InlineHook("_ZN4CPad15AimWeaponUpDownEP4CPedPb", &CPad__AimWeaponUpDown_hook, &CPad__AimWeaponUpDown);
     CHook::InlineHook("_ZN4CPad12SniperZoomInEv", &CPad__SniperZoomIn_hook, &CPad__SniperZoomIn);

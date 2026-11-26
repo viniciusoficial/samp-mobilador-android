@@ -65,12 +65,6 @@ bool UI::initialize()
     m_spawn->setPosition(UISettings::spawnPos());
     m_spawn->setVisible(false);
 
-    m_dialog = new Dialog();
-    this->addChild(m_dialog);
-    m_dialog->setVisible(false);
-    m_dialog->setMinSize(UISettings::dialogMinSize());
-    m_dialog->setMaxSize(UISettings::dialogMaxSize());
-
     m_keyboard = new Keyboard();
     this->addChild(m_keyboard);
     m_keyboard->setFixedSize(UISettings::keyboardSize());
@@ -82,6 +76,13 @@ bool UI::initialize()
     m_playerTabList->setMinSize(UISettings::dialogMinSize());
     m_playerTabList->setMaxSize(UISettings::dialogMaxSize());
     m_playerTabList->setVisible(false);
+
+    // Dialog always added last so confirmations stay on top (Z-order)
+    m_dialog = new Dialog();
+    this->addChild(m_dialog);
+    m_dialog->setVisible(false);
+    m_dialog->setMinSize(UISettings::dialogMinSize());
+    m_dialog->setMaxSize(UISettings::dialogMaxSize());
 
     label = new Label(" ", ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 2);
     pUI->addChild(label);
@@ -144,15 +145,15 @@ void UI::drawList()
 
 void UI::touchEvent(const ImVec2& pos, TouchType type)
 {
-    if (m_keyboard->visible() && m_keyboard->contains(pos))
-    {
-        m_keyboard->touchEvent(pos, type);
-        return;
-    }
-
     if (m_dialog->visible() && m_dialog->contains(pos))
     {
         m_dialog->touchEvent(pos, type);
+        return;
+    }
+
+    if (m_keyboard->visible() && m_keyboard->contains(pos))
+    {
+        m_keyboard->touchEvent(pos, type);
         return;
     }
 

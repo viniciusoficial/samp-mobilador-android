@@ -96,7 +96,7 @@ public class DialogManager {
         activity.addContentView(layout, new ConstraintLayout.LayoutParams(-1, -1));
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            layout.setZ(1);
+            layout.setZ(48f);
         }
 
         this.DIALOG_STYLE_MSGBOX = 0;
@@ -202,7 +202,8 @@ public class DialogManager {
         this.mMainLayout.setLayoutParams(layoutParams2);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            this.mMainLayout.setZ(1);
+            this.mMainLayout.setZ(48f);
+            this.mMainLayout.bringToFront();
         }
 
         loadDialog();
@@ -222,7 +223,8 @@ public class DialogManager {
         this.mMainLayout.setVisibility(View.VISIBLE);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            this.mMainLayout.setZ(1);
+            this.mMainLayout.setZ(48f);
+            this.mMainLayout.bringToFront();
         }
     }
 
