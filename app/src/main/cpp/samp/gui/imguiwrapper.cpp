@@ -1,10 +1,6 @@
 #include "main.h"
 #include "imguiwrapper.h"
 #include "uisettings.h"
-#include "pause_menu.h"
-#include "nexion_minimap.h"
-#include "nexioncontrols.h"
-#include <algorithm>
 
 #include "game/game.h"
 #include "net/netgame.h"
@@ -110,13 +106,6 @@ void ImGuiWrapper::render()
 	}*/
 
 	drawList();
-	if (!PauseMenu::IsOpen()) {
-		const ImVec2 display = ImGui::GetIO().DisplaySize;
-		const float scale = std::max(0.5f, std::min(display.x / 2048.0f, display.y / 921.0f));
-		ImDrawList* background = ImGui::GetBackgroundDrawList();
-		NexionMiniMap::Draw(background, display, scale);
-	}
-	PauseMenu::Render();
 	ImGui::EndFrame();
 	ImGui::Render();
 	renderDrawData(ImGui::GetDrawData());

@@ -36,84 +36,12 @@
 #include "graphics/ES2VertexBuffer.h"
 #include "graphics/RQ_Commands.h"
 #include "graphics/RQShader.h"
-#include "Mobile/MobileMenu/MobileMenu.h"
-#include "Mobile/MobileSettings/MobileSettings.h"
-#include "../gui/nexion_minimap.h"
-#include "../gui/nexioncontrols.h"
-#include "../gui/pause_menu.h"
 ///skip for now later if above is already converted
 extern UI* pUI;
 extern CGame* pGame;
 extern CNetGame *pNetGame;
 extern MaterialTextGenerator* pMaterialTextGenerator;
 extern CJavaWrapper *pJavaWrapper;
-
-namespace
-{
-    bool g_nexionParticleEffects = true;
-    bool g_nexionDistanceFog = true;
-    bool g_nexionSkidmarks = true;
-    int g_nexionGeneralSensitivity = 50;
-    int g_nexionAimSensitivity = 50;
-    float g_nexionMasterVolume = 1.0f;
-    float g_nexionMusicVolume = 1.0f;
-    float g_nexionRadioVolume = 1.0f;
-
-    int ClampNexionPercent(int value)
-    {
-        return std::max(1, std::min(value, 100));
-    }
-
-    void SetNativeMobileSetting(eMobileSettings id, int value)
-    {
-        auto& setting = CMobileSettings::ms_MobileSettings[id];
-        setting.value = std::max(setting.min, std::min(value, setting.max));
-    }
-}
-
-void SetNexionParticleEffectsEnabled(bool enabled) { g_nexionParticleEffects = enabled; }
-bool GetNexionParticleEffectsEnabled() { return g_nexionParticleEffects; }
-void SetNexionDistanceFogEnabled(bool enabled) { g_nexionDistanceFog = enabled; }
-bool GetNexionDistanceFogEnabled() { return g_nexionDistanceFog; }
-void SetNexionSkidmarksEnabled(bool enabled)
-{
-    g_nexionSkidmarks = enabled;
-    if (g_libGTASA) SetNativeMobileSetting(MS_Traffic, enabled ? 1 : 0);
-}
-bool GetNexionSkidmarksEnabled() { return g_nexionSkidmarks; }
-void SetNexionWorldDrawDistance(int value)
-{
-    if (g_libGTASA) SetNativeMobileSetting(MS_DrawDistance, value);
-}
-void SetNexionGeneralCameraSensitivity(int value)
-{
-    g_nexionGeneralSensitivity = ClampNexionPercent(value);
-    if (g_libGTASA) {
-        SetNativeMobileSetting(MS_MouseSensitivityX, g_nexionGeneralSensitivity);
-        SetNativeMobileSetting(MS_MouseSensitivityY, g_nexionGeneralSensitivity);
-    }
-}
-int GetNexionGeneralCameraSensitivity() { return g_nexionGeneralSensitivity; }
-void SetNexionAimCameraSensitivity(int value) { g_nexionAimSensitivity = ClampNexionPercent(value); }
-int GetNexionAimCameraSensitivity() { return g_nexionAimSensitivity; }
-void SetNexionMasterVolume(float value) { g_nexionMasterVolume = std::max(0.0f, std::min(value, 1.0f)); }
-float GetNexionMasterVolume() { return g_nexionMasterVolume; }
-void SetNexionMusicVolume(float value)
-{
-    g_nexionMusicVolume = std::max(0.0f, std::min(value, 1.0f));
-    if (g_libGTASA) SetNativeMobileSetting(MS_MusicVolume, static_cast<int>(g_nexionMusicVolume * 100.0f));
-}
-float GetNexionMusicVolume() { return g_nexionMusicVolume; }
-void SetNexionRadioVolume(float value) { g_nexionRadioVolume = std::max(0.0f, std::min(value, 1.0f)); }
-float GetNexionRadioVolume() { return g_nexionRadioVolume; }
-void SetNexionRadioAutoTune(bool enabled) { if (g_libGTASA) SetNativeMobileSetting(MS_Autotune, enabled ? 1 : 0); }
-void SetNexionRadioStation(int station) { if (g_libGTASA) SetNativeMobileSetting(MS_DefaultStation, station); }
-void SetNexionAspectRatio(float) {}
-
-int GetNexionTargetingMode()
-{
-    return g_libGTASA ? CMobileSettings::ms_MobileSettings[MS_Targeting].value : 1;
-}
 
 static void (*CFont_PrintString)(float posX, float posY, uint16_t* text);
 
@@ -207,8 +135,8 @@ void MainLoop();
 void(*Render2dStuff)();
 void Render2dStuff_hook()
 {
-    MainLoop();
     Render2dStuff();
+    MainLoop();
 
     if (pNetGame && pGame && !pGame->IsGamePaused())
     {
@@ -244,13 +172,6 @@ void CRadar_DrawRadarGangOverlay_hook(uint32_t unk)
 }
 
 int (*CRadar__SetCoordBlip)(int r0, float X, float Y, float Z, int r4, int r5, char *name);
-void NexionMapSendWaypoint(float X, float Y, float Z)
-{
-    if (!CRadar__SetCoordBlip) return;
-    char codeway[] = "CODEWAY";
-    CRadar__SetCoordBlip(0, X, Y, Z, 0, 0, codeway);
-}
-
 int CRadar__SetCoordBlip_hook(int r0, float X, float Y, float Z, int r4, int r5, char *name)
 {
     if (pNetGame && !strncmp(name, "CODEWAY", 7))
@@ -514,13 +435,6 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 
     if (pGame->IsGamePaused())
         return AND_TouchEvent(type, num, posX, posY);
-
-    if (PauseMenu::HandleTouch(type, posX, posY))
-        return;
-    if (NexionMiniMap::HandleTouch(type, num, posX, posY))
-        return;
-    if (NexionControls::HandleTouch(type, num, posX, posY))
-        return;
 
     if (pUI != nullptr)
     {
@@ -1987,11 +1901,6 @@ void InjectHooks()
 	CStreamingInfo::InjectHooks();
 	RQShader::InjectHooks();
 	CRenderer::InjectHooks();
-	// These two modules expose the real pause/map state and the native
-	// graphics/input settings table used by libGame.so.  They were defined
-	// but never installed on the main hook path.
-	CMobileMenu::InjectHooks();
-	CMobileSettings::InjectHooks();
 }
 
 void (*CPlaceable_InitMatrixArray)(void);
