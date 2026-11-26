@@ -24,6 +24,11 @@ file(GLOB_RECURSE SOURCES
         ${CMAKE_CURRENT_LIST_DIR}/**/**/**/**/**/**/**/**/**/*.c*
 )
 
+list(REMOVE_ITEM SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/gui/nexion_minimap.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/gui/pause_menu.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/gui/samp_widgets/nexionsettingsmenu.cpp)
+
 include_directories(
         ${CMAKE_CURRENT_LIST_DIR}
         ${CMAKE_CURRENT_LIST_DIR}/util/
