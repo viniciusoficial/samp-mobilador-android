@@ -10,6 +10,11 @@
 
 extern CGame* pGame;
 
+static CScene* GetGameScene()
+{
+    return g_libGTASA ? reinterpret_cast<CScene*>(g_libGTASA + 0xCD0868) : nullptr;
+}
+
 CSnapShotHelper::CSnapShotHelper()
 {
     m_camera = 0;
@@ -49,7 +54,10 @@ void CSnapShotHelper::SetUpScene()
     RwV2d view = { 0.5f, 0.5f };
     RwCameraSetViewWindow(m_camera, &view);
     RwCameraSetProjection(m_camera, rwPERSPECTIVE);
-    RpWorldAddCamera(Scene.m_pRpWorld, m_camera);
+    CScene* gameScene = GetGameScene();
+    if (gameScene && gameScene->m_pRpWorld) {
+        RpWorldAddCamera(gameScene->m_pRpWorld, m_camera);
+    }
 }
 
 // 0.3.7
@@ -149,15 +157,26 @@ RwTexture* CSnapShotHelper::CreateObjectSnapShot(int iModel, uint32_t dwColor, C
         RwFrameTranslate(parent, &v, rwCOMBINEPRECONCAT);
 
         // Safely apply rotations
+        RwV3d axisX = { 1.0f, 0.0f, 0.0f };
+        RwV3d axisY = { 0.0f, 1.0f, 0.0f };
+        RwV3d axisZ = { 0.0f, 0.0f, 1.0f };
         if (vecRot->x != 0.0f && vecRot->x >= -360.0f && vecRot->x <= 360.0f) {
-            RwFrameRotate(parent, &vec, vecRot->x, rwCOMBINEPRECONCAT);
+            RwFrameRotate(parent, &axisX, vecRot->x, rwCOMBINEPRECONCAT);
         }
         if (vecRot->y != 0.0f && vecRot->y >= -360.0f && vecRot->y <= 360.0f) {
-            RwFrameRotate(parent, &vec, vecRot->y, rwCOMBINEPRECONCAT);
+            RwFrameRotate(parent, &axisY, vecRot->y, rwCOMBINEPRECONCAT);
         }
         if (vecRot->z != 0.0f && vecRot->z >= -360.0f && vecRot->z <= 360.0f) {
-            RwFrameRotate(parent, &vec, vecRot->z, rwCOMBINEPRECONCAT);
+            RwFrameRotate(parent, &axisZ, vecRot->z, rwCOMBINEPRECONCAT);
         }
+    }
+
+    CScene* gameScene = GetGameScene();
+    if (!gameScene || !gameScene->m_pRpWorld || !m_camera || !m_light) {
+        if (bufferTexture) RwTextureDestroy(bufferTexture);
+        DestroyAtomicOrClump(reinterpret_cast<uintptr_t>(pRwObject));
+        CStreaming::RemoveModelIfNoRefs(iModel);
+        return nullptr;
     }
 
     m_camera->frameBuffer = raster;
@@ -174,13 +193,14 @@ RwTexture* CSnapShotHelper::CreateObjectSnapShot(int iModel, uint32_t dwColor, C
 
     if (!RwCameraBeginUpdate(m_camera)) {
         Log("Failed to begin camera update");
+        if (gameScene->m_pRwCamera) CVisibilityPlugins::SetRenderWareCamera(gameScene->m_pRwCamera);
         if (bufferTexture) RwTextureDestroy(bufferTexture);
         DestroyAtomicOrClump(reinterpret_cast<uintptr_t>(pRwObject));
         CStreaming::RemoveModelIfNoRefs(iModel);
         return nullptr;
     }
 
-    RpWorldAddLight(Scene.m_pRpWorld, m_light);
+    RpWorldAddLight(gameScene->m_pRpWorld, m_light);
 
     // Safely set render states
     RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*)TRUE);
@@ -199,7 +219,10 @@ RwTexture* CSnapShotHelper::CreateObjectSnapShot(int iModel, uint32_t dwColor, C
     }
 
     RwCameraEndUpdate(m_camera);
-    RpWorldRemoveLight(Scene.m_pRpWorld, m_light);
+    RpWorldRemoveLight(gameScene->m_pRpWorld, m_light);
+    if (gameScene->m_pRwCamera) {
+        CVisibilityPlugins::SetRenderWareCamera(gameScene->m_pRwCamera);
+    }
     DestroyAtomicOrClump(reinterpret_cast<uintptr_t>(pRwObject));
     CStreaming::RemoveModelIfNoRefs(iModel);
 
@@ -291,6 +314,14 @@ RwTexture* CSnapShotHelper::CreatePedSnapShot(int iModel, uint32_t dwColor, CVec
 
     pPed->m_pPed->SetMatrix((CMatrix&)mat);
 
+    CScene* gameScene = GetGameScene();
+    if (!gameScene || !gameScene->m_pRpWorld || !m_camera || !m_light) {
+        if (bufferTexture) RwTextureDestroy(bufferTexture);
+        delete pPed;
+        CStreaming::RemoveModelIfNoRefs(iModel);
+        return nullptr;
+    }
+
     m_camera->frameBuffer = raster;
     CVisibilityPlugins::SetRenderWareCamera(m_camera);
 
@@ -304,13 +335,14 @@ RwTexture* CSnapShotHelper::CreatePedSnapShot(int iModel, uint32_t dwColor, CVec
 
     if (!RwCameraBeginUpdate(m_camera)) {
         Log("Failed to begin camera update for ped");
+        if (gameScene->m_pRwCamera) CVisibilityPlugins::SetRenderWareCamera(gameScene->m_pRwCamera);
         if (bufferTexture) RwTextureDestroy(bufferTexture);
         delete pPed;
         CStreaming::RemoveModelIfNoRefs(iModel);
         return nullptr;
     }
 
-    RpWorldAddLight(Scene.m_pRpWorld, m_light);
+    RpWorldAddLight(gameScene->m_pRpWorld, m_light);
 
     RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*)TRUE);
     RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)TRUE);
@@ -327,7 +359,10 @@ RwTexture* CSnapShotHelper::CreatePedSnapShot(int iModel, uint32_t dwColor, CVec
     }
 
     RwCameraEndUpdate(m_camera);
-    RpWorldRemoveLight(Scene.m_pRpWorld, m_light);
+    RpWorldRemoveLight(gameScene->m_pRpWorld, m_light);
+    if (gameScene->m_pRwCamera) {
+        CVisibilityPlugins::SetRenderWareCamera(gameScene->m_pRwCamera);
+    }
     pPed->m_pPed->Remove();
     delete pPed;
     CStreaming::RemoveModelIfNoRefs(iModel);
@@ -430,6 +465,14 @@ RwTexture* CSnapShotHelper::CreateVehicleSnapShot(int iModel, uint32_t dwColor, 
     pVehicle->m_pVehicle->SetMatrix((CMatrix&)mat);
     pVehicle->m_pVehicle->UpdateRW();
 
+    CScene* gameScene = GetGameScene();
+    if (!gameScene || !gameScene->m_pRpWorld || !m_camera || !m_light) {
+        RwTextureDestroy(bufferTexture);
+        delete pVehicle;
+        CStreaming::RemoveModelIfNoRefs(iModel);
+        return nullptr;
+    }
+
     m_camera->frameBuffer = raster;
     CVisibilityPlugins::SetRenderWareCamera(m_camera);
 
@@ -443,13 +486,14 @@ RwTexture* CSnapShotHelper::CreateVehicleSnapShot(int iModel, uint32_t dwColor, 
 
     if (!RwCameraBeginUpdate(m_camera)) {
         Log("Failed to begin camera update for vehicle");
+        if (gameScene->m_pRwCamera) CVisibilityPlugins::SetRenderWareCamera(gameScene->m_pRwCamera);
         RwTextureDestroy(bufferTexture);
         delete pVehicle;
         CStreaming::RemoveModelIfNoRefs(iModel);
         return nullptr;
     }
 
-    RpWorldAddLight(Scene.m_pRpWorld, m_light);
+    RpWorldAddLight(gameScene->m_pRpWorld, m_light);
     RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*)TRUE);
     RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)TRUE);
     RwRenderStateSet(rwRENDERSTATESHADEMODE, (void*)rwSHADEMODEGOURAUD);
@@ -459,7 +503,10 @@ RwTexture* CSnapShotHelper::CreateVehicleSnapShot(int iModel, uint32_t dwColor, 
     pVehicle->m_pVehicle->Add();
     RenderEntity(pVehicle->m_pVehicle);
     RwCameraEndUpdate(m_camera);
-    RpWorldRemoveLight(Scene.m_pRpWorld, m_light);
+    RpWorldRemoveLight(gameScene->m_pRpWorld, m_light);
+    if (gameScene->m_pRwCamera) {
+        CVisibilityPlugins::SetRenderWareCamera(gameScene->m_pRwCamera);
+    }
     pVehicle->m_pVehicle->Remove();
     delete pVehicle;
     CStreaming::RemoveModelIfNoRefs(iModel);

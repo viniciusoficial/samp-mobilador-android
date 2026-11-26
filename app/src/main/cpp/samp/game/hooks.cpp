@@ -2041,16 +2041,12 @@ void CPlaceable_InitMatrixArray_hook(void)
     // CMatrixLinkList::Init
     ((void (*)(uintptr_t, size_t))(g_libGTASA + 0x4AC048))(g_libGTASA + 0xA01668, 10000);
 }
-int (*_RwTextureDestroy)(int a1);
-int _RwTextureDestroy_hook(int a1)
+int (*_RwTextureDestroy)(uintptr_t a1);
+int _RwTextureDestroy_hook(uintptr_t a1)
 {
-    int result; // r0
-
-    if ( (unsigned int)(a1 + 1) >= 2 )
-        result = _RwTextureDestroy(a1);
-    else
-        result = 0;
-    return result;
+    if (a1 && a1 != static_cast<uintptr_t>(-1))
+        return _RwTextureDestroy(a1);
+    return 0;
 }
 
 

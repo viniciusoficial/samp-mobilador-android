@@ -134,6 +134,10 @@ void CTextDraw::Draw()
         return DrawTextured();
     }
 
+    if (m_TextDrawData.dwStyle == 5) {
+        return;
+    }
+
     return DrawDefault();
 }
 

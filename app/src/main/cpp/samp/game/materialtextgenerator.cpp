@@ -29,7 +29,8 @@ void MaterialTextGenerator::SetUpScene()
     RwV2d view = { 0.5f, 0.5f };
     RwCameraSetViewWindow(m_camera, &view);
     RwCameraSetProjection(m_camera, rwPERSPECTIVE);
-    RpWorldAddCamera(Scene.m_pRpWorld, m_camera);
+    CScene* gameScene = g_libGTASA ? reinterpret_cast<CScene*>(g_libGTASA + 0xCD0868) : nullptr;
+    if (gameScene && gameScene->m_pRpWorld) RpWorldAddCamera(gameScene->m_pRpWorld, m_camera);
 }
 
 void MaterialTextGenerator::Render(const char* text, const ImVec2& size, int font_size, bool bold,
@@ -104,6 +105,8 @@ RwTexture* MaterialTextGenerator::Generate(const char* text, int size, int font_
 		Render(text, ImVec2(width, height), font_size, bold, fix_color(font_color), fix_color(background_color), alignment);
         Log("MaterialTextGenerator::Generate8");
 		RwCameraEndUpdate((RwCamera*)m_camera);
+		CScene* gameScene = g_libGTASA ? reinterpret_cast<CScene*>(g_libGTASA + 0xCD0868) : nullptr;
+		if (gameScene && gameScene->m_pRwCamera) CVisibilityPlugins::SetRenderWareCamera(gameScene->m_pRwCamera);
 	}
 
 	return bufferTexture;
