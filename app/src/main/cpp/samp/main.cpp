@@ -70,9 +70,12 @@ void Log(const char* fmt, ...);
 
 int work = 0;
 
+void ApplyNexionGraphicsSettings();
+
 void ReadSettingFile()
 {
 	pSettings = new CSettings();
+	ApplyNexionGraphicsSettings();
 }
 
 int hashing(const char* str) {
@@ -177,6 +180,7 @@ void DoInitStuff()
 
 		pGame->Initialize();
 		pGame->SetMaxStats();
+		ApplyNexionGraphicsSettings();
 		pGame->ToggleThePassingOfTime(false);
 
 		LogVoice("[dbg:samp:load] : module loaded");

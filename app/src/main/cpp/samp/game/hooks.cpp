@@ -39,9 +39,11 @@
 #include "Mobile/MobileMenu/MobileMenu.h"
 #include "Mobile/MobileSettings/MobileSettings.h"
 #include "../gui/nexioncontrols.h"
+#include "../settings.h"
 ///skip for now later if above is already converted
 extern UI* pUI;
 extern CGame* pGame;
+extern CSettings* pSettings;
 extern CNetGame *pNetGame;
 extern MaterialTextGenerator* pMaterialTextGenerator;
 extern CJavaWrapper *pJavaWrapper;
@@ -106,6 +108,52 @@ void SetNexionRadioVolume(float value) { g_nexionRadioVolume = std::max(0.0f, st
 float GetNexionRadioVolume() { return g_nexionRadioVolume; }
 void SetNexionRadioAutoTune(bool enabled) { if (g_libGTASA) SetNativeMobileSetting(MS_Autotune, enabled ? 1 : 0); }
 void SetNexionRadioStation(int station) { if (g_libGTASA) SetNativeMobileSetting(MS_DefaultStation, station); }
+
+// Aplica no jogo os valores do painel Nexion que ja estavam gravados em
+// SAMP/settings.ini. Sem esta chamada o cliente ignorava completamente
+// RenderScale/DrawDistance/VisualEffects e o motor renderizava no preset mais
+// baixo (imagem serrilhada, pouca distancia e nenhum efeito).
+void ApplyNexionGraphicsSettings()
+{
+    if (!g_libGTASA || pSettings == nullptr)
+        return;
+
+    const stSettings& settings = pSettings->Get();
+
+    // Valores escolhidos no menu nativo (MobileSettingNN) tem prioridade.
+    for (int index = 0; index < stSettings::NexionMobileSettingCount; ++index)
+    {
+        if (settings.iNexionMobileSettings[index] >= 0)
+            CMobileSettings::ms_MobileSettings[index].value = settings.iNexionMobileSettings[index];
+    }
+
+    // A tabela nativa e criada zerada pelo InjectHooks, entao os defaults que
+    // normalmente viriam dela (min/max/defaultValue) se perdem. Os limites sao
+    // fixados aqui para nao entregar valor invalido ao motor.
+    auto applyRange = [&settings](eMobileSettings id, int saved, int fallback, int lowest, int highest)
+    {
+        if (settings.iNexionMobileSettings[id] >= 0)
+            return;
+
+        int value = saved;
+        if (value < lowest || value > highest)
+            value = fallback;
+        CMobileSettings::ms_MobileSettings[id].value = value;
+    };
+
+    applyRange(MS_Resolution, settings.iNexionRenderScale, 100, 25, 100);
+    applyRange(MS_DrawDistance, settings.iNexionDrawDistance, 100, 0, 100);
+    applyRange(MS_Visuals, settings.iNexionVisualEffects, 2, 0, 3);
+    applyRange(MS_Shadows, -1, 1, 0, 2);
+    applyRange(MS_CarReflections, -1, 2, 0, 2);
+
+    LOGI("Nexion graphics: res=%d dist=%d visuals=%d shadows=%d reflections=%d",
+         CMobileSettings::ms_MobileSettings[MS_Resolution].value,
+         CMobileSettings::ms_MobileSettings[MS_DrawDistance].value,
+         CMobileSettings::ms_MobileSettings[MS_Visuals].value,
+         CMobileSettings::ms_MobileSettings[MS_Shadows].value,
+         CMobileSettings::ms_MobileSettings[MS_CarReflections].value);
+}
 extern float* ms_fAspectRatio;
 extern void CameraSize(RwCamera* camera, RwRect* rect, RwReal viewWindow, RwReal aspectRatio);
 

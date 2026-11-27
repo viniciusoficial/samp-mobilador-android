@@ -10,6 +10,14 @@
 
 extern CGame* pGame;
 
+namespace
+{
+    // 256x256 deixava os previews de ped/veiculo/objeto borrados quando o
+    // textdraw era desenhado grande na tela. 512 usa a mesma memoria de um
+    // raster de camera do jogo e mantem o preview nitido.
+    constexpr int kSnapshotRasterSize = 512;
+}
+
 static CScene* GetGameScene()
 {
     return g_libGTASA ? reinterpret_cast<CScene*>(g_libGTASA + 0xCD0868) : nullptr;
@@ -35,7 +43,7 @@ void CSnapShotHelper::SetUpScene()
     // RpLightSetColor
     RpLightSetColor(m_light, reinterpret_cast<const RwRGBAReal *>(rwColor));
 
-    m_zBuffer = RwRasterCreate(256, 256, 0, rwRASTERTYPEZBUFFER);
+    m_zBuffer = RwRasterCreate(kSnapshotRasterSize, kSnapshotRasterSize, 0, rwRASTERTYPEZBUFFER);
     m_camera = RwCameraCreate();
     m_frame = RwFrameCreate();
     CVector v = { 0.0f, 0.0f, 50.0f };
@@ -96,7 +104,7 @@ RwTexture* CSnapShotHelper::CreateObjectSnapShot(int iModel, uint32_t dwColor, C
         return nullptr;
     }
 
-    RwRaster* raster = RwRasterCreate(256, 256, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
+    RwRaster* raster = RwRasterCreate(kSnapshotRasterSize, kSnapshotRasterSize, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
     if (!raster) {
         Log("Failed to create raster");
         DestroyAtomicOrClump(reinterpret_cast<uintptr_t>(pRwObject));
@@ -255,7 +263,7 @@ RwTexture* CSnapShotHelper::CreatePedSnapShot(int iModel, uint32_t dwColor, CVec
         return nullptr;
     }
 
-    RwRaster* raster = RwRasterCreate(256, 256, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
+    RwRaster* raster = RwRasterCreate(kSnapshotRasterSize, kSnapshotRasterSize, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
     if (!raster) {
         Log("Failed to create raster");
         CStreaming::RemoveModelIfNoRefs(iModel);
@@ -294,6 +302,16 @@ RwTexture* CSnapShotHelper::CreatePedSnapShot(int iModel, uint32_t dwColor, CVec
     pPed->m_pPed->SetPosn(0.0f, posY, posZ);
     pPed->SetModelIndex(iModel);
     pPed->m_pPed->SetCollisionChecking(false);
+
+    // Modelo carregado mas sem clump significa que nada seria renderizado: a
+    // textura sairia vazia e o textdraw a aceitaria como preview definitivo.
+    // Devolve nulo para o CTextDraw tentar de novo mais tarde.
+    if (!pPed->m_pPed->m_pRwClump) {
+        RwTextureDestroy(bufferTexture);
+        delete pPed;
+        CStreaming::RemoveModelIfNoRefs(iModel);
+        return nullptr;
+    }
 
     RwMatrix mat = pPed->m_pPed->GetMatrix().ToRwMatrix();
 
@@ -375,7 +393,7 @@ RwTexture* CSnapShotHelper::CreateVehicleSnapShot(int iModel, uint32_t dwColor, 
 {
     if (iModel <= 0 || iModel > 20000) return nullptr;
 
-    RwRaster* raster = RwRasterCreate(256, 256, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
+    RwRaster* raster = RwRasterCreate(kSnapshotRasterSize, kSnapshotRasterSize, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
     if (!raster) return nullptr;
 
     // RwTextureCreate
@@ -424,6 +442,15 @@ RwTexture* CSnapShotHelper::CreateVehicleSnapShot(int iModel, uint32_t dwColor, 
     }
 
     pVehicle->m_pVehicle->SetCollisionChecking(false);
+
+    // Sem clump o veiculo nao seria desenhado e o preview ficaria em branco.
+    // Devolve nulo para o CTextDraw tentar novamente.
+    if (!pVehicle->m_pVehicle->m_pRwClump) {
+        RwTextureDestroy(bufferTexture);
+        delete pVehicle;
+        CStreaming::RemoveModelIfNoRefs(iModel);
+        return nullptr;
+    }
 
     CColModel* pColModel = CModelInfo::GetModelInfo(iModel)->m_pColModel;
     float radius = 1.0f;

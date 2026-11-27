@@ -8,6 +8,7 @@
 #include <cstring>
 
 extern CGame *pGame;
+extern void ApplyNexionGraphicsSettings();
 
 namespace
 {
@@ -246,9 +247,12 @@ void CSettings::SaveNexionMenuSettings()
     ini.SetBoolValue("gui", "fps", m_Settings.iFPSCounter, nullptr, true);
 
     ini.SetLongValue("nexion", "AspectRatio", ClampSetting(m_Settings.iNexionAspectRatio, 0, 4, 0), nullptr, true);
-    ini.SetLongValue("nexion", "RenderScale", ClampPercent(m_Settings.iNexionRenderScale, 65), nullptr, true);
-    ini.SetLongValue("nexion", "DrawDistance", ClampPercent(m_Settings.iNexionDrawDistance, 75), nullptr, true);
-    ini.SetLongValue("nexion", "VisualEffects", ClampSetting(m_Settings.iNexionVisualEffects, 0, 3, 1), nullptr, true);
+    // Os defaults gravados precisam casar com ApplyNexionGraphicsSettings().
+    // Antes o painel salvava 65/75/1 quando o jogador nunca tinha mexido nesses
+    // itens, e no boot seguinte a qualidade ficava presa nesse preset baixo.
+    ini.SetLongValue("nexion", "RenderScale", ClampPercent(m_Settings.iNexionRenderScale, 100), nullptr, true);
+    ini.SetLongValue("nexion", "DrawDistance", ClampPercent(m_Settings.iNexionDrawDistance, 100), nullptr, true);
+    ini.SetLongValue("nexion", "VisualEffects", ClampSetting(m_Settings.iNexionVisualEffects, 0, 3, 2), nullptr, true);
 
     for (int index = 0; index < stSettings::NexionMobileSettingCount; ++index)
     {
@@ -300,4 +304,7 @@ void CSettings::SaveNexionMenuSettings()
     {
         Log("Nexion settings: can't save %s (%d)", path, static_cast<int>(saveResult));
     }
+
+    // Aplica imediatamente o que o painel acabou de gravar, sem reiniciar.
+    ApplyNexionGraphicsSettings();
 }

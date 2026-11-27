@@ -119,6 +119,16 @@ void DoShadowThisFrame_hook(CRealTimeShadowManager* thiz, CPhysical *physical) {
         return;
     }
 
+    // O gerenciador nunca era inicializado neste cliente, por isso
+    // DoShadowThisFrame() abortava sempre (sem sombras). Inicializa na primeira
+    // chamada real do jogo, com o proprio ponteiro que o motor enviou.
+    if (!thiz->m_bInitialised) {
+        if (CMobileSettings::ms_MobileSettings[MS_Shadows].value <= 0) {
+            return;
+        }
+        thiz->Init();
+    }
+
     thiz->DoShadowThisFrame(physical);
 }
 
