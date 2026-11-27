@@ -39,7 +39,10 @@ void MaterialTextGenerator::Render(const char* text, const ImVec2& size, int fon
 	if (pUI) {
 		ImGui::NewFrame();
 
-		auto info = Encoding::cp2utf(text).c_str();
+		// cp2utf() devolve std::string por valor: guardar apenas o c_str()
+		// deixava um ponteiro pendurado (use-after-free) e o texto do
+		// material saia vazio/lixo ou derrubava o jogo.
+		const std::string info = Encoding::cp2utf(text);
 
 		pUI->renderer()->drawRect(ImVec2(0.0f, 0.0f), size, background_color, true);
 		ImVec2 text_size = pUI->renderer()->calculateTextSize(info, font_size);
@@ -81,17 +84,19 @@ const ImColor fix_color(uint32_t color)
 
 RwTexture* MaterialTextGenerator::Generate(const char* text, int size, int font_size, bool bold, uint32_t font_color, uint32_t background_color, int alignment)
 {
+	// Sem camera do gerador (SetUpScene falhou) o acesso a m_camera->frameBuffer
+	// era um null-pointer dereference.
+	if (!m_camera || !g_libGTASA) return nullptr;
+
 	int width, height;
 	GetMaterialSize(size, &width, &height);
-    Log("MaterialTextGenerator::Generate");
 	RwRaster* raster = RwRasterCreate(width, height, 32, rwRASTERFORMAT8888 | rwRASTERTYPECAMERATEXTURE);
-    Log("MaterialTextGenerator::Generate1");
-    RwTexture* bufferTexture = RwTextureCreate(raster);
-    Log("MaterialTextGenerator::Generate2");
+	if (!raster) return nullptr;
 
-	if (raster && bufferTexture)
+    RwTexture* bufferTexture = RwTextureCreate(raster);
+	if (!bufferTexture) return nullptr;
+
 	{
-        Log("MaterialTextGenerator::Generate3");
         m_camera->frameBuffer = raster;
         Log("MaterialTextGenerator::Generate4");
         CVisibilityPlugins::SetRenderWareCamera(m_camera);
@@ -105,6 +110,9 @@ RwTexture* MaterialTextGenerator::Generate(const char* text, int size, int font_
 		Render(text, ImVec2(width, height), font_size, bold, fix_color(font_color), fix_color(background_color), alignment);
         Log("MaterialTextGenerator::Generate8");
 		RwCameraEndUpdate((RwCamera*)m_camera);
+		// O raster pertence a textura: manter o ponteiro na camera deixava
+		// um frameBuffer pendurado depois de RwTextureDestroy.
+		m_camera->frameBuffer = nullptr;
 		CScene* gameScene = g_libGTASA ? reinterpret_cast<CScene*>(g_libGTASA + 0xCD0868) : nullptr;
 		if (gameScene && gameScene->m_pRwCamera) CVisibilityPlugins::SetRenderWareCamera(gameScene->m_pRwCamera);
 	}
@@ -119,7 +127,12 @@ void MaterialTextGenerator::GetMaterialSize(int size, int* x, int* y)
 			{ 256, 64 } , { 256, 128 } , { 256, 256 } , { 512, 64 } , { 512,128 } , { 512,256 } , { 512,512 }
 	};
 
+	// size vem do servidor (RPC_SetObjectMaterialText). Fora de 10..140 o
+	// indice estourava —
+	// sizes[-1] / sizes[14] — gerando largura/altura lixo em RwRasterCreate.
 	int del = (size / 10) - 1;
+	if (del < 0) del = 0;
+	if (del > 13) del = 13;
 	*x = sizes[del][0];
 	*y = sizes[del][1];
 }

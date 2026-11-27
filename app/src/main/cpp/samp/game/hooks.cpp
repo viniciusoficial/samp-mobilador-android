@@ -249,13 +249,18 @@ void MainLoop();
 void(*Render2dStuff)();
 void Render2dStuff_hook()
 {
+    /* Render2dStuff precisa rodar ANTES da interface do SA-MP: e' ele que
+       monta a projecao ortografica 2D e o estado de render usado por
+       CFont/CSprite2d. Desenhando antes dele, TextDraws e chat eram
+       desenhados com a matriz 3D do frame e sumiam/ficavam deformados. */
+    Render2dStuff();
+
     if (g_customAspectRatio > 0.1f && ms_fAspectRatio)
     {
         *ms_fAspectRatio = g_customAspectRatio;
     }
 
     MainLoop();
-    Render2dStuff();
 
     if (pNetGame && pGame && !pGame->IsGamePaused())
     {

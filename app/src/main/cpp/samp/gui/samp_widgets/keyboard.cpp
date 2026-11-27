@@ -69,7 +69,28 @@ void Keyboard::setActiveLayout(KeyboardLayout::Type type)
     m_layoutLowerENG->setVisible(false);
     m_layoutUpperENG->setVisible(false);
     m_layoutNUM->setVisible(false);
-    m_activeLayout->setVisible(false);
+
+    // Era aqui que o teclado sumia: o layout escolhido nunca era tornado
+    // visivel (e m_activeLayout nem era atualizado), entao o teclado abria
+    // vazio e as teclas nao respondiam.
+    switch (type)
+    {
+        case KeyboardLayout::Type::ENG_LOWER:
+            m_layoutLowerENG->setVisible(true);
+            m_activeLayout = m_layoutLowerENG;
+            break;
+
+        case KeyboardLayout::Type::ENG_UPPER:
+            m_layoutUpperENG->setVisible(true);
+            m_activeLayout = m_layoutUpperENG;
+            break;
+
+        case KeyboardLayout::Type::NUM:
+            m_layoutNUM->setVisible(true);
+            m_activeLayout = m_layoutNUM;
+            break;
+    }
+
     m_activeLayoutType = type;
 }
 
@@ -106,14 +127,14 @@ void Keyboard::show(Widget* caller)
 {
     m_history->reset();
     m_input->clear();
-    const ImVec2 chatPos = UISettings::chatPos();
-    const ImVec2 chatSize = UISettings::chatSize();
-    this->setFixedSize(ImVec2(chatSize.x, UISettings::keyboardRowHeight()));
-    this->setPosition(ImVec2(chatPos.x, chatPos.y + chatSize.y + 8.0f));
-    m_layoutLowerENG->setVisible(false);
-    m_layoutUpperENG->setVisible(false);
-    m_layoutNUM->setVisible(false);
+    // Tamanho/posicao do teclado vem de UISettings (640x300 escalado).
+    // Prender o widget em keyboardRowHeight (uma unica linha) deixava o
+    // teclado com 52px de altura e sem espaco para as teclas.
+    this->setFixedSize(UISettings::keyboardSize());
+    this->setPosition(UISettings::keyboardPos());
     this->performLayout();
+    // Garante que o layout ativo esteja visivel ao reabrir.
+    this->setActiveLayout(m_activeLayoutType);
     this->setVisible(true);
     pGame->EnableGameInput(false);
     m_caller = caller;

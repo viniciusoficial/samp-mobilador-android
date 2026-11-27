@@ -33,6 +33,9 @@ CTextDraw::CTextDraw(TEXT_DRAW_TRANSMIT* pTextDrawTransmit, const char* szText)
     m_TextDrawData.byteAlignLeft = pTextDrawTransmit->byteLeft;
     m_TextDrawData.byteAlignRight = pTextDrawTransmit->byteRight;
     m_TextDrawData.dwStyle = pTextDrawTransmit->byteStyle;
+    // Estilo fora de 0..5 (pacote invalido/malicioso) fazia
+    // CFont::SetFontStyle ler fora da tabela de fontes do GTA.
+    if (m_TextDrawData.dwStyle > 5) m_TextDrawData.dwStyle = 0;
 
     m_TextDrawData.fX = pTextDrawTransmit->fX;
     m_TextDrawData.fY = pTextDrawTransmit->fY;

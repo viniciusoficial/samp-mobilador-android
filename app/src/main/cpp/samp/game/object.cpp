@@ -300,7 +300,9 @@ void CObject::SetMaterial(int iModel, int iMaterialIndex, char* txdname, char* t
 void CObject::SetMaterialText(int index, char* text, int materialSize, char* fontname, int fontSize, bool bold,
 	uint32_t dwFontColor, uint32_t dwBackColor, int textAlignment)
 {
-	if (index >= 16) return;
+	// index vinha do RPC sem limite inferior e 'text' sem validacao: indice
+	// negativo escrevia antes do array e strcpy estourava o buffer de 2048.
+	if (index < 0 || index >= 16 || text == nullptr) return;
 
 	if (m_MaterialTextTexture[index]) {
         RwTextureDestroy(reinterpret_cast<RwTexture *>(m_MaterialTextTexture[index]));
@@ -318,7 +320,8 @@ void CObject::SetMaterialText(int index, char* text, int materialSize, char* fon
 	}
 
 	m_szMaterialText[index] = new char[2048];
-	strcpy(m_szMaterialText[index], text);
+	strncpy(m_szMaterialText[index], text, 2047);
+	m_szMaterialText[index][2047] = '\0';
 
 	m_iMaterialSize[index] = materialSize;
 	m_iMaterialFontSize[index] = fontSize;
@@ -331,11 +334,15 @@ void CObject::ProcessMaterialText()
 {
 	for (int i = 0; i < 16; i++)
 	{
-		if (m_iMaterialType[i] == MATERIAL_TYPE_TEXT && m_MaterialTextTexture[i] == 0)
+		if (m_iMaterialType[i] == MATERIAL_TYPE_TEXT && m_MaterialTextTexture[i] == 0 &&
+			m_szMaterialText[i] != nullptr && m_szMaterialText[i][0] != '\0')
 		{
-			m_iMaterialFontSize[i]*=0.75f;
+			// Antes o tamanho da fonte era reduzido no proprio membro a cada
+			// tentativa; se Generate() falhasse, o texto encolhia 0.75x por
+			// frame ate zerar e recriava rasters sem parar.
+			const int scaledFontSize = static_cast<int>(m_iMaterialFontSize[i] * 0.75f);
 			m_MaterialTextTexture[i] = reinterpret_cast<uintptr_t>(pMaterialTextGenerator->Generate(
-                    m_szMaterialText[i], m_iMaterialSize[i], m_iMaterialFontSize[i],
+                    m_szMaterialText[i], m_iMaterialSize[i], scaledFontSize,
                     false, m_dwMaterialFontColor[i], m_dwMaterialBackColor[i],
                     m_iMaterialTextAlign[i]));
 			m_bHasMaterialText = true;

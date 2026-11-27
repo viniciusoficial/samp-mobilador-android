@@ -33,7 +33,10 @@ RwCamera* RwCameraClear(RwCamera* camera, RwRGBA* colour, RwInt32 clearMode) {
 
     if (!s_resolved) {
         s_resolved = true;
-        void* handle = CHook::lib ? CHook::lib : dlopen("libGame.so", RTLD_LAZY | RTLD_NOLOAD);
+        // CHook::lib ja e' o handle de libGame.so carregado pelo jogo.
+        // (dlopen("libGame.so", RTLD_NOLOAD) falhava quando o nome/handle
+        //  nao casava e nunca resolvia o simbolo.)
+        void* handle = CHook::lib;
         const char* const candidates[] = {
             "_Z13RwCameraClearP8RwCameraP6RwRGBAi",
             "_Z13RwCameraClearP8RwCameraPK6RwRGBAi",
@@ -62,8 +65,9 @@ RwCamera* RwCameraClear(RwCamera* camera, RwRGBA* colour, RwInt32 clearMode) {
         return s_rwCameraClear(camera, colour, clearMode);
     }
 
-    if ((clearMode & rwCAMERACLEARIMAGE) && camera->frameBuffer && colour &&
-        RwRasterPushContext && RwRasterClear && RwRasterPopContext) {
+    const bool canClear = RwRasterPushContext && RwRasterClear && RwRasterPopContext;
+
+    if ((clearMode & rwCAMERACLEARIMAGE) && camera->frameBuffer && colour && canClear) {
         RwInt32 pixel = static_cast<RwInt32>(
             (static_cast<uint32_t>(colour->alpha) << 24) |
             (static_cast<uint32_t>(colour->blue) << 16) |
@@ -74,6 +78,17 @@ RwCamera* RwCameraClear(RwCamera* camera, RwRGBA* colour, RwInt32 clearMode) {
             RwRasterPopContext();
         }
     }
+
+    // O clear do Z-buffer era ignorado no fallback: os snapshots de TextDraw
+    // de modelo (style 5) herdavam o depth do frame anterior e o modelo
+    // aparecia invisivel/cortado.
+    if ((clearMode & rwCAMERACLEARZ) && camera->zBuffer && canClear) {
+        if (RwRasterPushContext(camera->zBuffer)) {
+            RwRasterClear(static_cast<RwInt32>(0xFFFFFFFF));
+            RwRasterPopContext();
+        }
+    }
+
     return camera;
 }
 
