@@ -203,6 +203,163 @@ int iTotalObjects = 0;
 
 void ScrCreateObject(RPCParameters* rpcParams)
 {
+    // Corpo antigo (comentado) preservado logo abaixo apenas como referencia.
+    if (pNetGame == nullptr || rpcParams == nullptr)
+        return;
+
+    unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
+    const int iBitLength = rpcParams->numberOfBitsOfData;
+    if (Data == nullptr || iBitLength <= 0)
+        return;
+
+    RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
+
+    OBJECTID ObjectID = INVALID_OBJECT_ID;
+    int iModel = 0;
+    CVector vecPos{ 0.0f, 0.0f, 0.0f };
+    CVector vecRot{ 0.0f, 0.0f, 0.0f };
+    float fDrawDistance = 300.0f;
+    uint8_t byteNoCameraCol = 0;
+    OBJECTID AttachedObjectID = INVALID_OBJECT_ID;
+    VEHICLEID AttachedVehicleID = INVALID_VEHICLE_ID;
+
+    if (!bsData.Read(ObjectID) || !bsData.Read(iModel))
+        return;
+
+    bsData.Read(vecPos.x);
+    bsData.Read(vecPos.y);
+    bsData.Read(vecPos.z);
+    bsData.Read(vecRot.x);
+    bsData.Read(vecRot.y);
+    bsData.Read(vecRot.z);
+    bsData.Read(fDrawDistance);
+    bsData.Read(byteNoCameraCol);
+    bsData.Read(AttachedVehicleID);
+    bsData.Read(AttachedObjectID);
+
+    // Sem estes limites o RPC gravava fora do pool de 1000 objetos ou pedia um
+    // modelo que o cliente nao possui (>= 20000 e' txd, nao dff).
+    if (ObjectID >= MAX_OBJECTS || iModel <= 0 || iModel >= 20000)
+    {
+        LOGW("CreateObject invalido: id=%d model=%d", static_cast<int>(ObjectID), iModel);
+        return;
+    }
+
+    CVector vecAttachOffset{ 0.0f, 0.0f, 0.0f };
+    CVector vecAttachRot{ 0.0f, 0.0f, 0.0f };
+    uint8_t bSyncRotation = 0;
+
+    if (AttachedObjectID != INVALID_OBJECT_ID || AttachedVehicleID != INVALID_VEHICLE_ID)
+    {
+        bsData.Read(vecAttachOffset.x);
+        bsData.Read(vecAttachOffset.y);
+        bsData.Read(vecAttachOffset.z);
+        bsData.Read(vecAttachRot.x);
+        bsData.Read(vecAttachRot.y);
+        bsData.Read(vecAttachRot.z);
+        bsData.Read(bSyncRotation);
+    }
+
+    CObjectPool* pObjectPool = pNetGame->GetObjectPool();
+    if (pObjectPool == nullptr)
+        return;
+
+    if (!pObjectPool->New(ObjectID, iModel, vecPos, vecRot, fDrawDistance))
+    {
+        LOGW("CreateObject falhou: id=%d model=%d", static_cast<int>(ObjectID), iModel);
+        return;
+    }
+
+    CObject* pObject = pObjectPool->GetAt(ObjectID);
+    if (pObject == nullptr)
+        return;
+
+    if (AttachedObjectID != INVALID_OBJECT_ID)
+        pObject->SetAttachedObject(AttachedObjectID, &vecAttachOffset, &vecAttachRot, bSyncRotation != 0);
+    else if (AttachedVehicleID != INVALID_VEHICLE_ID)
+        pObject->SetAttachedVehicle(AttachedVehicleID, &vecAttachOffset, &vecAttachRot);
+
+    uint8_t byteMaterialsCount = 0;
+    bsData.Read(byteMaterialsCount);
+
+    for (uint8_t m = 0; m < byteMaterialsCount; ++m)
+    {
+        uint8_t byteType = 0;
+        if (!bsData.Read(byteType))
+            break;
+
+        if (byteType == 1) // material (txd + textura)
+        {
+            uint8_t byteMaterialIndex = 0;
+            uint16_t MaterialModel = 0xFFFF;
+            uint8_t byteLength = 0;
+            char txdname[128]{};
+            char texturename[128]{};
+            uint32_t dwColor = 0;
+
+            bsData.Read(byteMaterialIndex);
+            bsData.Read(MaterialModel);
+
+            if (!bsData.Read(byteLength) || byteLength >= sizeof(txdname))
+                break;
+            bsData.Read(txdname, byteLength);
+            txdname[byteLength] = '\0';
+
+            if (!bsData.Read(byteLength) || byteLength >= sizeof(texturename))
+                break;
+            bsData.Read(texturename, byteLength);
+            texturename[byteLength] = '\0';
+
+            bsData.Read(dwColor);
+
+            if (byteMaterialIndex < 16)
+                pObject->SetMaterial(MaterialModel, byteMaterialIndex, txdname, texturename, dwColor);
+        }
+        else if (byteType == 2) // material text
+        {
+            uint8_t byteMaterialIndex = 0;
+            uint8_t byteMaterialSize = 0;
+            uint8_t byteFontNameLength = 0;
+            char szFontName[64]{};
+            uint8_t byteFontSize = 0;
+            uint8_t byteFontBold = 0;
+            uint32_t dwFontColor = 0;
+            uint32_t dwBackgroundColor = 0;
+            uint8_t byteAlign = 0;
+            char szText[2048]{};
+
+            bsData.Read(byteMaterialIndex);
+            bsData.Read(byteMaterialSize);
+            bsData.Read(byteFontNameLength);
+
+            if (byteFontNameLength >= sizeof(szFontName))
+                break;
+            bsData.Read(szFontName, byteFontNameLength);
+            szFontName[byteFontNameLength] = '\0';
+
+            bsData.Read(byteFontSize);
+            bsData.Read(byteFontBold);
+            bsData.Read(dwFontColor);
+            bsData.Read(dwBackgroundColor);
+            bsData.Read(byteAlign);
+            stringCompressor->DecodeString(szText, 2048, &bsData);
+
+            if (byteMaterialIndex < 16)
+                pObject->SetMaterialText(byteMaterialIndex, szText, byteMaterialSize, szFontName,
+                                         byteFontSize, byteFontBold != 0, dwFontColor, dwBackgroundColor, byteAlign);
+        }
+        else
+        {
+            // Tipo desconhecido: o resto do stream nao pode mais ser lido.
+            break;
+        }
+    }
+
+    iTotalObjects++;
+}
+
+void ScrCreateObjectLegacy(RPCParameters* rpcParams)
+{
 	/*
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;

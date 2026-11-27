@@ -39,6 +39,7 @@
 #include "Mobile/MobileMenu/MobileMenu.h"
 #include "Mobile/MobileSettings/MobileSettings.h"
 #include "../gui/nexioncontrols.h"
+#include "../gui/graphicsmenu.h"
 #include "../settings.h"
 ///skip for now later if above is already converted
 extern UI* pUI;
@@ -113,7 +114,7 @@ void SetNexionRadioStation(int station) { if (g_libGTASA) SetNativeMobileSetting
 // SAMP/settings.ini. Sem esta chamada o cliente ignorava completamente
 // RenderScale/DrawDistance/VisualEffects e o motor renderizava no preset mais
 // baixo (imagem serrilhada, pouca distancia e nenhum efeito).
-void ApplyNexionGraphicsSettings()
+void ApplyNexionGraphicsSettings(bool bLog)
 {
     if (!g_libGTASA || pSettings == nullptr)
         return;
@@ -147,12 +148,15 @@ void ApplyNexionGraphicsSettings()
     applyRange(MS_Shadows, -1, 1, 0, 2);
     applyRange(MS_CarReflections, -1, 2, 0, 2);
 
-    LOGI("Nexion graphics: res=%d dist=%d visuals=%d shadows=%d reflections=%d",
-         CMobileSettings::ms_MobileSettings[MS_Resolution].value,
-         CMobileSettings::ms_MobileSettings[MS_DrawDistance].value,
-         CMobileSettings::ms_MobileSettings[MS_Visuals].value,
-         CMobileSettings::ms_MobileSettings[MS_Shadows].value,
-         CMobileSettings::ms_MobileSettings[MS_CarReflections].value);
+    if (bLog)
+    {
+        LOGI("Nexion graphics: res=%d dist=%d visuals=%d shadows=%d reflections=%d",
+             CMobileSettings::ms_MobileSettings[MS_Resolution].value,
+             CMobileSettings::ms_MobileSettings[MS_DrawDistance].value,
+             CMobileSettings::ms_MobileSettings[MS_Visuals].value,
+             CMobileSettings::ms_MobileSettings[MS_Shadows].value,
+             CMobileSettings::ms_MobileSettings[MS_CarReflections].value);
+    }
 }
 extern float* ms_fAspectRatio;
 extern void CameraSize(RwCamera* camera, RwRect* rect, RwReal viewWindow, RwReal aspectRatio);
@@ -453,7 +457,14 @@ void (*CObject_Render)(CObjectGta* thiz);
 void CObject_Render_hook(CObjectGta* thiz)
 {
     CObjectGta *object = thiz;
-    if(pNetGame && object != 0)
+
+    // O original so' era chamado quando havia pNetGame: qualquer objeto do
+    // mapa (ou o primeiro objeto do servidor antes do netgame subir) ficava
+    // invisivel. O render nativo tem que rodar sempre.
+    if (object == nullptr)
+        return;
+
+    if(pNetGame)
     {
         CObject *pObject = pNetGame->GetObjectPool()->FindObjectFromGtaPtr(object);
         if(pObject && pObject->m_pEntity)
@@ -479,9 +490,9 @@ void CObject_Render_hook(CObjectGta* thiz)
 
 
         }
-
-        CObject_Render(object);
     }
+
+    CObject_Render(object);
 
     //((void (*)(void))(g_libGTASA + (VER_x32 ? 0x005D1F98 + 1 : 0x6F6664)))();
     //((void (*)(void))(g_libGTASA + 0x5D1F5C + 1))();
@@ -616,6 +627,12 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
 {
     // imgui
     //bool bRet = pUI->OnTouchEvent(type, num, posX, posY);
+
+    // Painel /menu: consome o toque quando ele cai dentro da janela (fora dela
+    // o jogador continua podendo girar a camera para ver o efeito na hora).
+    // Vem antes do teste de pausa para o painel responder tambem em pausa.
+    if (GraphicsMenu::IsVisible() && GraphicsMenu::HandleTouch(type, posX, posY))
+        return;
 
     if (pGame->IsGamePaused())
         return AND_TouchEvent(type, num, posX, posY);

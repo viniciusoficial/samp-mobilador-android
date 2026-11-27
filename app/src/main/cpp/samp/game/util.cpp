@@ -2914,12 +2914,15 @@ bool IsGameEntityArePlaceable(CEntityGTA *pEntity)
 
 RpAtomic* ObjectMaterialCallBack(RpAtomic* rpAtomic, CObject* pObject)
 {
-    if(!pObject) return rpAtomic;
+    if(!pObject || !rpAtomic || !rpAtomic->geometry || !rpAtomic->geometry->matList.materials) return rpAtomic;
     int iTotalEntries = rpAtomic->geometry->matList.numMaterials;
     if (iTotalEntries > 16) iTotalEntries = 16; // fix fucking bug :|
     for (int i = 0; i < iTotalEntries; i++)
     {
-        if(pObject->m_MaterialTexture[i])
+        // Aplica so' o que foi realmente definido como material; antes um
+        // material de texto tambem caia aqui e a textura era sobrescrita.
+        if(pObject->m_MaterialTexture[i] && pObject->m_iMaterialType[i] == MATERIAL_TYPE_MATERIAL &&
+           rpAtomic->geometry->matList.materials[i])
             rpAtomic->geometry->matList.materials[i]->texture = (RwTexture*)pObject->m_MaterialTexture[i];
             /*material->color.red = pObject->m_dwMaterialColor[i]->red;
             material->color.green = pObject->m_dwMaterialColor[i]->green;
@@ -2932,13 +2935,17 @@ RpAtomic* ObjectMaterialCallBack(RpAtomic* rpAtomic, CObject* pObject)
 
 RpAtomic* ObjectMaterialTextCallBack(RpAtomic* rpAtomic, CObject* pObject)
 {
-    if(!pObject->m_MaterialTextTexture || rpAtomic->object.object.type != 1) return rpAtomic;
+    if(!pObject || !rpAtomic || !rpAtomic->geometry || !rpAtomic->geometry->matList.materials) return rpAtomic;
 
     int iTotalEntries = rpAtomic->geometry->matList.numMaterials;
     if (iTotalEntries > 16) iTotalEntries = 16; // fix fucking bug :|
     for (int i = 0; i < iTotalEntries; i++)
     {
-        if(pObject->m_MaterialTextTexture[i])
+        // So' materiais declarados como texto recebem a textura gerada (as
+        // placas com texto do servidor). Antes qualquer textura existente era
+        // aplicada em todos os materiais do objeto.
+        if(pObject->m_MaterialTextTexture[i] && pObject->m_iMaterialType[i] == MATERIAL_TYPE_TEXT &&
+           rpAtomic->geometry->matList.materials[i])
         {
             rpAtomic->geometry->matList.materials[i]->texture = (RwTexture*)pObject->m_MaterialTextTexture[i];
         }

@@ -15,7 +15,8 @@ public:
 
     // 0.3.7
     CObject* GetAt(OBJECTID ObjectID) {
-        if (ObjectID <= MAX_OBJECTS && m_bObjectSlotState[ObjectID])
+        // ObjectID == MAX_OBJECTS estourava os dois arrays (1000 posicoes).
+        if (ObjectID < MAX_OBJECTS && m_bObjectSlotState[ObjectID])
             return m_pObjects[ObjectID];
 
         return nullptr;
@@ -23,17 +24,15 @@ public:
 
     CObject *GetObjectFromGtaPtr(CEntityGTA *pGtaObject)
     {
-        uint16_t x=1;
-
-        while(x!=MAX_OBJECTS)
+        // Comecava em 1 e parava antes de MAX: o objeto do slot 0 e o do
+        // ultimo slot nunca eram encontrados.
+        for (OBJECTID x = 0; x < MAX_OBJECTS; ++x)
         {
-            if(m_pObjects[x])
-                if(pGtaObject == m_pObjects[x]->m_pEntity) return m_pObjects[x];
-
-            x++;
+            if (m_pObjects[x] && pGtaObject == m_pObjects[x]->m_pEntity)
+                return m_pObjects[x];
         }
 
-        return 0;
+        return nullptr;
     }
 
     OBJECTID FindIDFromGtaPtr(CPhysical* pGtaObject);

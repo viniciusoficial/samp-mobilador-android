@@ -12,6 +12,7 @@
 #include "../voice/Network.h"
 
 #include "../gui/samp_widgets/voicebutton.h"
+#include "graphicsmenu.h"
 #include "game/Textures/TextureDatabaseRuntime.h"
 #include "game/Streaming.h"
 #include "game/Pools.h"
@@ -164,6 +165,9 @@ void UI::drawList()
 
     CrashTrace("drawList:ui");
     draw(renderer());
+
+    // Painel de graficos do comando /menu (janela ImGui desenhada por cima).
+    GraphicsMenu::Render();
 }
 
 void UI::touchEvent(const ImVec2& pos, TouchType type)

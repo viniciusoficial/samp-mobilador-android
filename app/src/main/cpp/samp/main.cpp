@@ -70,8 +70,6 @@ void Log(const char* fmt, ...);
 
 int work = 0;
 
-void ApplyNexionGraphicsSettings();
-
 void ReadSettingFile()
 {
 	pSettings = new CSettings();

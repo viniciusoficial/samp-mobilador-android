@@ -5,6 +5,8 @@
 #include "RW/RenderWare.h"
 #include "Streaming.h"
 #include "game/Models/ModelInfo.h"
+#include "util.h"
+#include "util/CUtil.h"
 
 #include <cmath>
 
@@ -14,11 +16,95 @@ extern MaterialTextGenerator* pMaterialTextGenerator;
 
 CObject::CObject(int iModel, CVector vecPos, CVector vecRot, float fDrawDistance, uint8_t bAttached)
 {
+    // O construtor era vazio: m_pEntity/m_dwGTAId e todos os materiais ficavam
+    // com lixo da heap. Nenhum CreateObject do servidor criava nada e qualquer
+    // SetMaterial podia chamar RwTextureDestroy em ponteiro aleatorio.
+    m_pEntity = nullptr;
+    m_dwGTAId = 0;
+    m_iModel = iModel;
+    m_byteMoving = 0;
+    m_fMoveSpeed = 0.0f;
+    m_bNeedRotate = false;
+    m_bForceRender = false;
+    m_bAttachedToPed = false;
+    m_bSyncRotation = false;
+    m_AttachedObjectID = 0xFFFF;
+    m_AttachedVehicleID = 0xFFFF;
+    m_MaterialTextIndex = 0;
+    m_bHasMaterial = false;
+    m_bHasMaterialText = false;
+    m_vecAttachedPos = CVector{ 0.0f, 0.0f, 0.0f };
+    m_vecAttachedRot = CVector{ 0.0f, 0.0f, 0.0f };
+    m_vecRotation = vecRot;
 
+    for (int i = 0; i < 16; ++i)
+    {
+        m_MaterialTexture[i] = 0;
+        m_MaterialTextTexture[i] = 0;
+        m_dwMaterialColor[i] = 0;
+        m_iMaterialType[i] = 0;
+        m_szMaterialText[i] = nullptr;
+        m_iMaterialSize[i] = 0;
+        m_iMaterialFontSize[i] = 0;
+        m_dwMaterialFontColor[i] = 0;
+        m_dwMaterialBackColor[i] = 0;
+        m_iMaterialTextAlign[i] = 0;
+    }
+
+    (void)fDrawDistance;
+    (void)bAttached;
+
+    if (iModel <= 0 || iModel >= 20000)
+        return;
+
+    // Cria o objeto pelo proprio opcode do jogo (0x0107), igual ao que o
+    // playerped ja faz para o copo/cigarro. Sem isto o pool nunca tinha objeto.
+    uintptr handle = 0;
+    ScriptCommand(&create_object, iModel, vecPos.x, vecPos.y, vecPos.z, &handle);
+    m_dwGTAId = static_cast<uint32_t>(handle);
+
+    if (m_dwGTAId == 0)
+        return;
+
+    m_pEntity = GamePool_Object_GetAt(static_cast<int>(m_dwGTAId));
+    if (m_pEntity == nullptr)
+    {
+        ScriptCommand(&destroy_object, static_cast<int>(m_dwGTAId));
+        m_dwGTAId = 0;
+        return;
+    }
+
+    if (vecRot.x != 0.0f || vecRot.y != 0.0f || vecRot.z != 0.0f)
+        InstantRotate(vecRot.x, vecRot.y, vecRot.z);
+
+    m_vecRotation = vecRot;
 }
 CObject::~CObject()
 {
+    for (int i = 0; i < 16; ++i)
+    {
+        // m_MaterialTexture vem do banco de texturas compartilhado: destruir
+        // aqui quebrava a textura de outros objetos que usam a mesma txd.
+        m_MaterialTexture[i] = 0;
 
+        if (m_MaterialTextTexture[i])
+        {
+            RwTextureDestroy(reinterpret_cast<RwTexture *>(m_MaterialTextTexture[i]));
+            m_MaterialTextTexture[i] = 0;
+        }
+
+        if (m_szMaterialText[i] != nullptr)
+        {
+            delete[] m_szMaterialText[i];
+            m_szMaterialText[i] = nullptr;
+        }
+    }
+
+    if (g_libGTASA && m_dwGTAId != 0 && GamePool_Object_GetAt(static_cast<int>(m_dwGTAId)) != nullptr)
+        ScriptCommand(&destroy_object, static_cast<int>(m_dwGTAId));
+
+    m_pEntity = nullptr;
+    m_dwGTAId = 0;
 }
 void CObject::Process(float fElapsedTime)
 {/*
@@ -278,23 +364,29 @@ float CObject::DistanceRemaining(RwMatrix* matPos)
 
 void CObject::SetMaterial(int iModel, int iMaterialIndex, char* txdname, char* texturename, uint32_t dwColor)
 {
-	Log("SetMaterial: model: %d, %s, %s", iModel, txdname, texturename);
-
-	int iTryCount = 0;
-
-	if (iMaterialIndex < 16)
-	{
-		if (m_MaterialTexture[iMaterialIndex]) {
-			RwTextureDestroy(reinterpret_cast<RwTexture *>(m_MaterialTexture[iMaterialIndex]));
-			m_MaterialTexture[iMaterialIndex] = 0;
-		}
-
-		m_MaterialTexture[iMaterialIndex] = (uintptr_t)LoadTexture(texturename);
-		m_dwMaterialColor[iMaterialIndex] = dwColor;
-		m_iMaterialType[iMaterialIndex] = MATERIAL_TYPE_MATERIAL;
-		m_bHasMaterial = true;
+	// Indice negativo escrevia antes dos arrays de 16 posicoes.
+	if (iMaterialIndex < 0 || iMaterialIndex >= 16 || texturename == nullptr)
 		return;
-	}
+
+	// O material do SA-MP vem com txd + textura; a versao antiga ignorava o
+	// txdname e procurava a textura em qualquer banco, o que trocava ou perdia
+	// a textura de placas/objetos. Procura primeiro no txd informado.
+	RwTexture* texture = nullptr;
+	if (txdname != nullptr && txdname[0] != '\0' && strncmp(txdname, "none", 4) != 0)
+		texture = CUtil::LoadTextureFromDB(txdname, texturename);
+
+	if (texture == nullptr)
+		texture = reinterpret_cast<RwTexture *>(LoadTexture(texturename));
+
+	// Nao destrói a textura anterior: ela pertence ao txd do jogo e pode estar
+	// sendo usada por outros objetos.
+	m_MaterialTexture[iMaterialIndex] = reinterpret_cast<uintptr_t>(texture);
+	m_dwMaterialColor[iMaterialIndex] = dwColor;
+	m_iMaterialType[iMaterialIndex] = MATERIAL_TYPE_MATERIAL;
+	m_bHasMaterial = true;
+
+	if (texture == nullptr)
+		LOGW("objeto %d: textura %s/%s nao encontrada", iModel, txdname ? txdname : "none", texturename);
 }
 
 void CObject::SetMaterialText(int index, char* text, int materialSize, char* fontname, int fontSize, bool bold,
@@ -334,6 +426,9 @@ void CObject::ProcessMaterialText()
 {
 	for (int i = 0; i < 16; i++)
 	{
+		if (pMaterialTextGenerator == nullptr)
+			return;
+
 		if (m_iMaterialType[i] == MATERIAL_TYPE_TEXT && m_MaterialTextTexture[i] == 0 &&
 			m_szMaterialText[i] != nullptr && m_szMaterialText[i][0] != '\0')
 		{

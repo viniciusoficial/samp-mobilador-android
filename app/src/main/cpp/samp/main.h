@@ -44,6 +44,10 @@ extern JavaVM* javaVM;
 uint32_t GetTickCount();
 void LogVoice(const char* fmt, ...);
 
+// Aplica no motor os graficos salvos em SAMP/settings.ini (ver game/hooks.cpp).
+// bLog = false evita gravar arquivo a cada frame enquanto um slider e' arrastado.
+void ApplyNexionGraphicsSettings(bool bLog = true);
+
 void Log(const char* fmt, ...);
 static bool bIsTouchCameraButt = false;
 

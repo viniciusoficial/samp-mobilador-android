@@ -1,4 +1,5 @@
 #include "../gui.h"
+#include "../graphicsmenu.h"
 #include "../../main.h"
 #include "../../game/game.h"
 #include "../../net/netgame.h"
@@ -102,6 +103,13 @@ void Chat::touchPopEvent()
 
 void Chat::keyboardEvent(const std::string& input)
 {
+    // Comando local: abre/fecha o painel de graficos (aplicacao em tempo real).
+    if (input == "/menu" || input == "/graficos" || input == "/gfx")
+    {
+        GraphicsMenu::Toggle();
+        return;
+    }
+
     if (input == "/mob")
     {
         if (pJavaWrapper)

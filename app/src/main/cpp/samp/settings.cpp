@@ -8,7 +8,6 @@
 #include <cstring>
 
 extern CGame *pGame;
-extern void ApplyNexionGraphicsSettings();
 
 namespace
 {
