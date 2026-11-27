@@ -258,6 +258,7 @@ void Render2dStuff_hook()
        monta a projecao ortografica 2D e o estado de render usado por
        CFont/CSprite2d. Desenhando antes dele, TextDraws e chat eram
        desenhados com a matriz 3D do frame e sumiam/ficavam deformados. */
+    CrashTrace("render2d:world2d");
     Render2dStuff();
 
     if (g_customAspectRatio > 0.1f && ms_fAspectRatio)
@@ -277,12 +278,16 @@ void Render2dStuff_hook()
 
         CTextDrawPool* pTextDrawPool = pNetGame->GetTextDrawPool();
         if (pTextDrawPool) {
+            CrashTrace("render2d:textdraws");
             pTextDrawPool->SnapshotProcess();
             pTextDrawPool->Draw();
         }
     }
 
-    if (pUI) pUI->render();
+    if (pUI) {
+        CrashTrace("render2d:ui");
+        pUI->render();
+    }
 }
 
 /* =============================================================================== */

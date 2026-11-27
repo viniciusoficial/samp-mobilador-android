@@ -24,9 +24,11 @@ void CPlayerTags::Render(ImGuiRenderer* renderer)
 	int dwHitEntity;
 	char szNickBuf[64];
 
-	if (!renderer) return;
+	    if (!renderer) return;
 
-	// Diagnostico: 1 linha a cada 3s dizendo exatamente onde as nametags param.
+    CrashTrace("tags:render");
+
+    // Diagnostico: 1 linha a cada 3s dizendo exatamente onde as nametags param.
 	static int s_iFrame = 0;
 	const bool bDiag = (++s_iFrame >= 180);
 	if (bDiag) s_iFrame = 0;
@@ -88,7 +90,9 @@ void CPlayerTags::Render(ImGuiRenderer* renderer)
 		iActive++;
 
 		CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
-		if (!pPlayerPed || !pPlayerPed->m_pPed)
+		// Sem clump (modelo ainda carregando) GetBonePosition acessa hierarquia
+		// de animacao invalida; nesse caso o ped e' descartado neste frame.
+		if (!pPlayerPed || !pPlayerPed->m_pPed || !pPlayerPed->m_pPed->m_pRwClump)
 		{
 			iSkipPed++;
 			continue;

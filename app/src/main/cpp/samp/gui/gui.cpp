@@ -144,14 +144,25 @@ void UI::drawList()
     if (pNetGame)
     {
         if (C3DTextLabelPool* pLabelPool = pNetGame->GetTextLabelPool())
+        {
+            CrashTrace("drawList:labels");
             pLabelPool->Render(renderer());
+        }
 
         if (CPlayerBubblePool* pBubblePool = pNetGame->GetPlayerBubblePool())
+        {
+            CrashTrace("drawList:bubbles");
             pBubblePool->Render(renderer());
+        }
     }
 
-    if (pPlayerTags) pPlayerTags->Render(renderer());
+    if (pPlayerTags)
+    {
+        CrashTrace("drawList:tags");
+        pPlayerTags->Render(renderer());
+    }
 
+    CrashTrace("drawList:ui");
     draw(renderer());
 }
 

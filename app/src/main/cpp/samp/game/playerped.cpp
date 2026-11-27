@@ -45,6 +45,8 @@ CPlayerPed::CPlayerPed()
 
 CPlayerPed::CPlayerPed(int iNum, int iSkin, float fX, float fY, float fZ, float fRotation)
 {
+    CrashTrace("playerped:ctor", iSkin);
+
     static int iPlayerNum;
     iPlayerNum = iNum; // ty killman <3
 
@@ -95,7 +97,11 @@ CPlayerPed::CPlayerPed(int iNum, int iSkin, float fX, float fY, float fZ, float 
 
     iSpecialAction = 0;
 
+    // CStreaming::TryLoadModel + CEntity::SetModelIndex do skin: se o crash cair
+    // aqui o trace mostra o skin exato.
+    CrashTrace("playerped:setmodel", iSkin);
     SetModelIndex(iSkin);
+    CrashTrace("playerped:setmodel:ok", iSkin);
 
 
     // GameResetPlayerKeys

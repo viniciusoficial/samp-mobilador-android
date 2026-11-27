@@ -588,6 +588,7 @@ void ServerQuit(RPCParameters *rpcParams)
 void WorldPlayerAdd(RPCParameters *rpcParams)
 {
 	Log("[RPC-IN] World player add");
+	CrashTrace("rpc:WorldPlayerAdd");
 
 	unsigned char * Data = reinterpret_cast<unsigned char *>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
@@ -637,14 +638,22 @@ void WorldPlayerAdd(RPCParameters *rpcParams)
 	Log::addParameter("wUnkData[9]", wUnkData[9]);
 	Log::addParameter("wUnkData[10]", wUnkData[10]);
 
+	if (playerId >= MAX_PLAYERS)
+	{
+		LOGE("WorldPlayerAdd: id invalido (%u) - descartado", (unsigned)playerId);
+		return;
+	}
+
 	if (pPlayerPool)
 	{
 		pRemotePlayer = pPlayerPool->GetAt(playerId);
 		if (pRemotePlayer)
 		{
+			CrashTrace("rpc:WorldPlayerAdd:spawn", playerId);
 			if (pRemotePlayer->Spawn(byteTeam, iSkin, &vecPos, fRotation, dwColor, byteFightingStyle))
 			{
                 Log("WorldPlayerAdd");
+				CrashTrace("rpc:WorldPlayerAdd:spawned", playerId);
 				pPlayerPed = pRemotePlayer->GetPlayerPed();
 				if (pPlayerPed)
 				{
@@ -1010,6 +1019,13 @@ void Create3DTextLabel(RPCParameters* rpcParams)
 
 	stringCompressor->DecodeString(szBuffer, sizeof szBuffer, &bsData);
 	label.text = szBuffer;
+
+	// Ids marcados como "anexado a player/veiculo" vem sem validacao: um id
+	// fora da faixa fazia o Render procurar em arrays fora do pool.
+	if (label.playerId >= MAX_PLAYERS)
+		label.playerId = INVALID_PLAYER_ID;
+	if (label.vehicleId >= MAX_VEHICLES)
+		label.vehicleId = INVALID_VEHICLE_ID;
 
 	if (wLabelId < MAX_TEXT_LABELS) {
 		pTextLabelPool->NewLabel(wLabelId, &label);

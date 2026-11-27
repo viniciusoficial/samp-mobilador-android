@@ -113,11 +113,14 @@ public final class KeyboardMouseSettings {
     private static boolean fastWeaponSwitch = true;
     private static boolean numberSlotKeys = true;
     private static boolean vehicleAutoCenter = false;
+    // 0.0f = automatico: usa a proporcao real da tela e nao mexe na camera.
+    // Forcar 16:9 por padrao esticava o mundo e desalinhava HUD/TextDraws em
+    // qualquer aparelho que nao fosse 16:9.
     private static final String[] ASPECT_RATIO_LABELS = {
-            "16:9 (Normal)", "15:9", "5:4", "4:3", "16:10"
+            "Automatico (tela)", "16:9", "15:9", "5:4", "4:3", "16:10"
     };
     private static final float[] ASPECT_RATIO_VALUES = {
-            16.0f / 9.0f, 15.0f / 9.0f, 5.0f / 4.0f, 4.0f / 3.0f, 16.0f / 10.0f
+            0.0f, 16.0f / 9.0f, 15.0f / 9.0f, 5.0f / 4.0f, 4.0f / 3.0f, 16.0f / 10.0f
     };
     private static int aspectRatioIndex = 0;
 

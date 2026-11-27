@@ -186,6 +186,23 @@ public:
             WriteLine(fd, "-------------------------------------------------");
         }
 
+        // Trilha de execucao: ultimo ponto do nosso codigo que chegou a rodar.
+        // Com PC/LR apontando para lixo e' isso que mostra onde o crash nasceu.
+        const int nTrace = CrashTraceCount();
+        if (nTrace > 0)
+        {
+            WriteLine(fd, "------------ EXECUTION TRACE ------------");
+            for (int i = 0; i < nTrace; ++i)
+            {
+                const char* tag = CrashTraceTag(i);
+                if (!tag) continue;
+                const int value = CrashTraceValue(i);
+                if (value >= 0) WriteLine(fd, "  %s (%d)", tag, value);
+                else WriteLine(fd, "  %s", tag);
+            }
+            WriteLine(fd, "-----------------------------------------");
+        }
+
         if (context) {
 #if defined(__aarch64__)
             uintptr_t pc = static_cast<uintptr_t>(context->uc_mcontext.pc);
@@ -214,6 +231,55 @@ public:
                               r, static_cast<unsigned long long>(context->uc_mcontext.regs[r]),
                               r + 1, static_cast<unsigned long long>(context->uc_mcontext.regs[r + 1]));
                 }
+            }
+
+            /* _Unwind_Backtrace dentro do handler comeca no proprio handler e nao
+               enxerga o frame que crashou. Caminha a cadeia de frame pointers a
+               partir do x29 do contexto (so leitura dentro da nossa pilha) e
+               escaneia a pilha por enderecos de retorno, para dar pelo menos as
+               funcoes chamadoras quando o PC e' lixo. */
+            WriteLine(fd, "------------ FP CHAIN (do frame que crashou) ------------");
+            {
+                uintptr_t walk = fp;
+                int shown = 0;
+                for (int i = 0; i < 24; ++i)
+                {
+                    if ((walk & 0xF) != 0) break;
+                    if (walk < sp || (walk - sp) > 0x10000) break;
+
+                    const uintptr_t nextFp = *reinterpret_cast<const uintptr_t*>(walk);
+                    const uintptr_t retAddr = *reinterpret_cast<const uintptr_t*>(walk + 8);
+                    if (retAddr < 0x1000) break;
+
+                    char label[24];
+                    snprintf(label, sizeof(label), "  fp#%02d", i);
+                    LogResolvedAddress(fd, label, retAddr);
+                    shown++;
+
+                    if (nextFp <= walk) break;
+                    walk = nextFp;
+                }
+                if (shown == 0)
+                    WriteLine(fd, "  (frame pointer indisponivel - use o EXECUTION TRACE acima)");
+            }
+
+            WriteLine(fd, "------------ STACK SCAN (retornos em libGame/samp) ------------");
+            {
+                int shown = 0;
+                for (int off = 0; off < 0x400 && shown < 32; off += 8)
+                {
+                    const uintptr_t value = *reinterpret_cast<const uintptr_t*>(sp + off);
+                    Dl_info stackInfo{};
+                    if (value == 0) continue;
+                    if (dladdr(reinterpret_cast<void*>(value), &stackInfo) == 0 || !stackInfo.dli_fname) continue;
+                    if (!strstr(stackInfo.dli_fname, "libGame.so") && !strstr(stackInfo.dli_fname, "samp.so")) continue;
+
+                    char label[24];
+                    snprintf(label, sizeof(label), "  sp+0x%03x", off);
+                    LogResolvedAddress(fd, label, value);
+                    shown++;
+                }
+                if (shown == 0) WriteLine(fd, "  (nenhum retorno reconhecido na pilha)");
             }
 #else
             uintptr_t pc = static_cast<uintptr_t>(context->uc_mcontext.arm_pc);

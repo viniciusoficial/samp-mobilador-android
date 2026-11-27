@@ -24,6 +24,16 @@ int         LogRecentCount();
 const char* LogRecentAt(int index);
 int         LogRecentCapacity();
 
+/* Trilha de execucao (breadcrumbs) impressa no relatorio de crash.
+   Grava so um ponteiro para string literal + um int num ring buffer: nao
+   aloca, nao formata e nao escreve em arquivo, entao pode ser chamado em
+   caminho por-frame. Serve para saber exatamente onde o crash aconteceu
+   quando o backtrace nao e' confiavel (PC/LR apontando para lixo). */
+void        CrashTrace(const char* tag, int value = -1);
+int         CrashTraceCount();
+const char* CrashTraceTag(int index);
+int         CrashTraceValue(int index);
+
 #define LOGD(...) LogEx('D', __FILE__, __LINE__, __VA_ARGS__)
 #define LOGI(...) LogEx('I', __FILE__, __LINE__, __VA_ARGS__)
 #define LOGW(...) LogEx('W', __FILE__, __LINE__, __VA_ARGS__)

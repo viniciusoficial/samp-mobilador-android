@@ -9,53 +9,58 @@ extern CNetGame *pNetGame;
 //extern CChatWindow *pChatWindow;
 //extern CGUI *pGUI;
 
-int WrapText(char* szText, int iWidth, int iMaxWord)
+/* Quebra de linha do balao de chat.
+
+   A versao antiga estourava o buffer: ela copiava o resto da string para uma
+   pilha local de 512 bytes a partir de um offset que podia passar do fim,
+   escrevia '\n' em szText[w+1] mesmo com w >= strlen e ainda anexava o texto
+   em szText + strlen(szText) (crescendo sem limite). Com texto grande isso
+   corrompia o heap e o crash aparecia depois, em outro lugar (PC/lr lixo).
+   Agora so troca caracteres ja existentes por '\n': nunca escreve fora do
+   buffer e nunca aumenta o texto. Retorna a quantidade de linhas. */
+int WrapText(char* szText, int iCapacity, int iWidth)
 {
-    int s, i, r, w, c;
-    char buf[512];
+    if (!szText || iCapacity < 2 || iWidth < 2) return 1;
 
-    r = strlen(szText);
-    w = iWidth;
-    i = 0;
-    c = 1;
+    int len = 0;
+    while (len < iCapacity - 1 && szText[len]) len++;
+    szText[len] = '\0';
 
-    memset(buf, 0, sizeof(buf));
+    int lines = 1;
+    int lineStart = 0;
+    int i = 0;
 
-    // if (strlen(szText) <= 512)
-    if(r <= (int)sizeof(buf))
+    while (i < len)
     {
-        while(r > iWidth)
+        if (szText[i] == '\n')
         {
-            s = iWidth;
-
-            while(s != 0 && szText[i + s] != ' ')
-                --s;
-
-            if(w - i - s <= iMaxWord)
-            {
-                i += s;
-                szText[i] = '\n';
-                r -= s;
-                w = i + iWidth;
-            }
-            else
-            {
-                strcpy(buf, szText + w);
-                szText[w + 1] = 0;
-                szText[w] = '\n';
-                memcpy(szText + strlen(szText), buf, strlen(buf) + 1);
-                i = w + 1;
-                r -= iWidth;
-                w += 1 + iWidth;
-            }
-
-            c++;
+            lines++;
+            lineStart = i + 1;
+            i++;
+            continue;
         }
 
-        return c;
+        if (i - lineStart < iWidth)
+        {
+            i++;
+            continue;
+        }
+
+        // Passou da largura: quebra no ultimo espaco da linha, ou na forca.
+        int brk = i;
+        while (brk > lineStart && szText[brk] != ' ') brk--;
+
+        if (brk > lineStart && szText[brk] == ' ')
+            szText[brk] = '\n';
+        else
+            szText[i] = '\n';
+
+        lineStart = (brk > lineStart ? brk : i) + 1;
+        lines++;
+        i = lineStart;
     }
 
-    return -1;
+    return lines;
 }
 
 CPlayerBubblePool::CPlayerBubblePool()
@@ -83,19 +88,32 @@ CPlayerBubblePool::~CPlayerBubblePool()
 
 PlayerBubbleStruct *CPlayerBubblePool::New(PLAYERID playerId, const char *text, uint32_t color, float distance, uint32_t time)
 {
+    // playerId vem do servidor: sem esse teste era escrita fora do array.
+    if (playerId >= MAX_PLAYERS || !text) return nullptr;
+
     if(m_bSlotState[playerId] && m_pPlayerBubble[playerId])
     {
         delete m_pPlayerBubble[playerId];
+        m_pPlayerBubble[playerId] = 0;
+        m_bSlotState[playerId] = false;
     }
 
     PlayerBubbleStruct* playerBubbleStruct = new PlayerBubbleStruct;
     //Utils::cpToUtf8(m_pPlayerBubble[playerId]->szText, text);
     std::string GText = Encoding::cp2utf(text);
-    strcpy(playerBubbleStruct->szText, GText.c_str());
+
+    // strcpy estourava szText[256] com mensagem longa (heap corrompido). Corta
+    // no limite sem partir um caractere UTF-8 no meio.
+    size_t iCopy = GText.size();
+    if (iCopy > sizeof(playerBubbleStruct->szText) - 1)
+        iCopy = sizeof(playerBubbleStruct->szText) - 1;
+    while (iCopy > 0 && ((unsigned char)GText[iCopy] & 0xC0) == 0x80) iCopy--;
+    memcpy(playerBubbleStruct->szText, GText.data(), iCopy);
+    playerBubbleStruct->szText[iCopy] = '\0';
 
     playerBubbleStruct->fDistance = distance;
     playerBubbleStruct->uiExpireTime = GetTickCount() + time;
-    playerBubbleStruct->dwLineCount = WrapText(playerBubbleStruct->szText, 36, 12) - 1;
+    playerBubbleStruct->dwLineCount = WrapText(playerBubbleStruct->szText, (int)sizeof(playerBubbleStruct->szText), 36) - 1;
     playerBubbleStruct->uiColor = color;
 
     m_pPlayerBubble[playerId] = playerBubbleStruct;
@@ -106,6 +124,8 @@ PlayerBubbleStruct *CPlayerBubblePool::New(PLAYERID playerId, const char *text, 
 
 void CPlayerBubblePool::Delete(PLAYERID playerId)
 {
+    if (playerId >= MAX_PLAYERS) return;
+
     if(m_bSlotState[playerId] && m_pPlayerBubble[playerId])
     {
         delete m_pPlayerBubble[playerId];
@@ -138,7 +158,8 @@ void CPlayerBubblePool::Draw(ImGuiRenderer* renderer)
                     if (pRemotePlayer && pRemotePlayer->IsActive()) {
                         CPlayerPed *pPlayerPed = pRemotePlayer->GetPlayerPed();
 
-                        if (pPlayerPed && pPlayerPed->m_pPed && pPlayerPed->m_pPed->IsAdded()) {
+                        if (pPlayerPed && pPlayerPed->m_pPed && pPlayerPed->m_pPed->IsAdded() &&
+                            pPlayerPed->m_pPed->m_pRwClump) {
                             if (pPlayerPed->m_pPed->GetDistanceFromCamera() <=
                                 m_pPlayerBubble[i]->fDistance) {
                                 CVector VecPos;

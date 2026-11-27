@@ -51,6 +51,8 @@ CRemotePlayer::~CRemotePlayer()
 
 void CRemotePlayer::Process()
 {
+	CrashTrace("rplayer:process", m_PlayerID);
+
 	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
 	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
 	CLocalPlayer* pLocalPlayer = pPlayerPool->GetLocalPlayer();
@@ -992,7 +994,9 @@ void CRemotePlayer::PutInCurrentVehicle()
 // 0.3.7
 float CRemotePlayer::GetDistanceFromLocalPlayer()
 {
-	if (!m_pPlayerPed) return 10000.0f;
+	// Roda por frame no render de 3D text labels/nametags: sem o teste de m_pPed
+	// um player logado mas sem ped (falha de spawn) derrubava o jogo.
+	if (!m_pPlayerPed || !m_pPlayerPed->m_pPed) return 10000.0f;
 
 	if (GetState() == PLAYER_STATE_DRIVER && m_pCurrentVehicle && m_pPlayerPed->IsInVehicle()) {
 		return m_pCurrentVehicle->m_pVehicle->GetDistanceFromLocalPlayerPed();

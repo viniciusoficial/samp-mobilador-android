@@ -16,6 +16,11 @@ namespace
 	char g_recent[RECENT_MAX][RECENT_LEN];
 	std::atomic<int> g_recentTotal{ 0 };
 
+	constexpr int TRACE_MAX = 28;
+	const char* g_traceTag[TRACE_MAX];
+	int g_traceValue[TRACE_MAX];
+	std::atomic<unsigned> g_traceTotal{ 0 };
+
 	const char* BaseName(const char* path)
 	{
 		if (!path) return "?";
@@ -45,6 +50,42 @@ void LogEx(char level, const char* file, int line, const char* fmt, ...)
 	}
 
 	Log("%s", out);
+}
+
+void CrashTrace(const char* tag, int value)
+{
+	if (!tag) return;
+
+	const unsigned slot = g_traceTotal.fetch_add(1, std::memory_order_relaxed) % TRACE_MAX;
+	// value primeiro, tag depois: quem le no handler nunca ve tag novo com valor velho.
+	g_traceValue[slot] = value;
+	__atomic_store_n(&g_traceTag[slot], tag, __ATOMIC_RELEASE);
+}
+
+int CrashTraceCount()
+{
+	const unsigned total = g_traceTotal.load(std::memory_order_acquire);
+	return total < TRACE_MAX ? (int)total : TRACE_MAX;
+}
+
+const char* CrashTraceTag(int index)
+{
+	if (index < 0 || index >= CrashTraceCount()) return nullptr;
+
+	const unsigned total = g_traceTotal.load(std::memory_order_acquire);
+	const int count = total < TRACE_MAX ? (int)total : TRACE_MAX;
+	const unsigned slot = (total - (unsigned)count + (unsigned)index) % TRACE_MAX;
+	return __atomic_load_n(&g_traceTag[slot], __ATOMIC_ACQUIRE);
+}
+
+int CrashTraceValue(int index)
+{
+	if (index < 0 || index >= CrashTraceCount()) return -1;
+
+	const unsigned total = g_traceTotal.load(std::memory_order_acquire);
+	const int count = total < TRACE_MAX ? (int)total : TRACE_MAX;
+	const unsigned slot = (total - (unsigned)count + (unsigned)index) % TRACE_MAX;
+	return g_traceValue[slot];
 }
 
 void LogRecentAdd(const char* line)

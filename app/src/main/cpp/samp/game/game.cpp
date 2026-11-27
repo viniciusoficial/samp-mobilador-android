@@ -427,6 +427,7 @@ CPlayerPed* CGame::NewPlayer(int iSkin, float fX, float fY, float fZ, float fRot
 	const int iPedSlot = FindFirstFreePlayerPedSlot();
 	if (iPedSlot < 0 || iPedSlot >= PLAYER_PED_SLOTS) return nullptr;
 
+	CrashTrace("game:newplayer", iSkin);
 	auto pPed = new CPlayerPed(iPedSlot, iSkin, fX, fY, fZ, fRotation);
 	if (!pPed || !pPed->m_pPed) {
 		// Ped creation failed: do not leak the wrapper or keep the slot marked.

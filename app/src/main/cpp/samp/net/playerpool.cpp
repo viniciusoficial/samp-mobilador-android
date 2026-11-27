@@ -44,6 +44,12 @@ void CPlayerPool::Process()
 // 0.3.7
 bool CPlayerPool::New(PLAYERID playerId, const char* szPlayerName, bool bIsNPC)
 {
+	// playerId vem do servidor: sem o teste, m_pPlayers/m_szPlayerNames eram
+	// escritos fora do array e corrompiam o resto do pool.
+	if (playerId >= MAX_PLAYERS || !szPlayerName) {
+		LOGE("playerpool: id invalido no New (%u)", (unsigned)playerId);
+		return false;
+	}
 	/*CPlayer *pPlayer = new CPlayer(szPlayerName, bIsNPC);
 
 	if (playerId > MAX_PLAYERS) {
@@ -70,7 +76,8 @@ bool CPlayerPool::New(PLAYERID playerId, const char* szPlayerName, bool bIsNPC)
 
 	if(m_pPlayers[playerId])
 	{
-		strcpy(m_szPlayerNames[playerId], szPlayerName);
+		strncpy(m_szPlayerNames[playerId], szPlayerName, MAX_PLAYER_NAME);
+		m_szPlayerNames[playerId][MAX_PLAYER_NAME] = '\0';
 		m_pPlayers[playerId]->SetID(playerId);
 		if(bIsNPC)
 			m_pPlayers[playerId]->SetNPC();
@@ -117,24 +124,23 @@ void CPlayerPool::FindLastPlayerID()
 
 int CPlayerPool::GetPlayerScore(PLAYERID playerId)
 {
-	if (playerId > MAX_PLAYERS) return 0;
+	if (playerId >= MAX_PLAYERS) return 0;
 	return m_iPlayerScores[playerId];
 }
 
 int CPlayerPool::GetPlayerPing(PLAYERID playerId)
 {
-	if (playerId > MAX_PLAYERS) {
-		return false;
+	if (playerId >= MAX_PLAYERS) {
+		return 0;
 	}
 
-	if (playerId > MAX_PLAYERS) return 0;
 	return m_dwPlayerPings[playerId];
 }
 
 // 0.3.7
 bool CPlayerPool::IsPlayerNPC(PLAYERID playerId)
 {
-	if (playerId > MAX_PLAYERS) {
+	if (playerId >= MAX_PLAYERS) {
 		return false;
 	}
 
