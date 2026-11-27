@@ -66,7 +66,10 @@ CObject::CObject(int iModel, CVector vecPos, CVector vecRot, float fDrawDistance
     (void)bAttached;
 
     if (iModel <= 0 || iModel >= 20000)
+    {
+        LOGW("objeto: modelo invalido %d", iModel);
         return;
+    }
 
     // O opcode create_object (0x0107) chama
     // CEntity::GetDistanceFromCentreOfMassToBaseOfModel para corrigir a altura
@@ -91,9 +94,9 @@ CObject::CObject(int iModel, CVector vecPos, CVector vecRot, float fDrawDistance
     uintptr handle = 0;
     ScriptCommand(&create_object, iModel, vecPos.x, vecPos.y, vecPos.z, &handle);
 
-    // Em falha o opcode devolve handle -1; 3000 e o tamanho do object pool
-    // (CPools::ms_pObjectPool em Pools.cpp).
-    if (handle >= 3000)
+    // Em falha o opcode devolve handle -1 (ou um negativo); handle >= 3000
+    // nunca e' valido (3000 e o tamanho do object pool em CPools::ms_pObjectPool).
+    if (handle == 0 || handle >= 3000)
     {
         LOGW("objeto: create_object falhou model=%d handle=%d", iModel, (int)handle);
         CStreaming::RemoveModelIfNoRefs(iModel);
@@ -129,6 +132,8 @@ CObject::CObject(int iModel, CVector vecPos, CVector vecRot, float fDrawDistance
 }
 CObject::~CObject()
 {
+    m_iModel = 0;
+
     for (int i = 0; i < 16; ++i)
     {
         // m_MaterialTexture vem do banco de texturas compartilhado: destruir
@@ -150,7 +155,7 @@ CObject::~CObject()
 
     // m_dwGTAId 0 e um handle valido (slot 0 do pool), por isso a validacao e
     // pelo pool, e confere o modelo para nao destruir um objeto que herdou o slot.
-    if (g_libGTASA && m_pEntity != nullptr)
+    if (g_libGTASA && m_pEntity != nullptr && m_dwGTAId != 0)
     {
         CPhysical* pEntity = GamePool_Object_GetAt(static_cast<int>(m_dwGTAId));
         if (pEntity != nullptr && pEntity == m_pEntity)
@@ -168,8 +173,17 @@ void CObject::Process(float fElapsedTime)
 {
 	// Sem entidade o objeto nao existe no mundo (modelo ausente no aparelho):
 	// nao ha nada para mover/anexar e mexer em m_pEntity nulo estourava.
-	if (m_pEntity == nullptr)
+	if (m_pEntity == nullptr || m_dwGTAId == 0)
 		return;
+
+	// O objeto deixou de existir no pool do jogo (modelo removido, por exemplo):
+	// naoprocessa nem tenta anexos, senao entrega m_dwGTAId inválido ao script.
+	if (GamePool_Object_GetAt(static_cast<int>(m_dwGTAId)) == nullptr)
+	{
+		LOGW("objeto %d: handle %d nao existe mais no pool", m_iModel, (int)m_dwGTAId);
+		m_pEntity = nullptr;
+		return;
+	}
 
 	// Anexado a um veiculo: quem move e' o veiculo. Anexa uma unica vez, quando
 	// o veiculo ja existe no mundo (o CreateObject pode chegar antes dele).
@@ -211,6 +225,9 @@ void CObject::Process(float fElapsedTime)
 		fElapsedTime = 0.016f;
 	if (fElapsedTime > 0.25f)
 		fElapsedTime = 0.25f;
+
+	if (GamePool_Object_GetAt(static_cast<int>(m_dwGTAId)) == nullptr)
+		return;
 
 	RwMatrix mat = m_pEntity->GetMatrix().ToRwMatrix();
 	float remaining = DistanceRemaining(&mat);
@@ -285,7 +302,8 @@ constexpr float DegreesToRadians(float angleInDegrees) {
 
 void CObject::InstantRotate(float x, float y, float z)
 {
-    if(!m_pEntity)return;
+    if (!m_pEntity || m_dwGTAId == 0) return;
+
     x = DegreesToRadians(x);
     y = DegreesToRadians(y);
     z = DegreesToRadians(z);
@@ -370,7 +388,7 @@ float CObject::DistanceRemaining(RwMatrix* matPos)
 
 void CObject::SetMaterial(int iModel, int iMaterialIndex, char* txdname, char* texturename, uint32_t dwColor)
 {
-	// Indice negativo escrevia antes dos arrays de 16 posicoes.
+	// Indice negativo ou acima de 15 escrevia antes dos arrays de 16 posicoes.
 	if (iMaterialIndex < 0 || iMaterialIndex >= 16 || texturename == nullptr)
 		return;
 
@@ -399,7 +417,7 @@ void CObject::SetMaterialText(int index, char* text, int materialSize, char* fon
 	uint32_t dwFontColor, uint32_t dwBackColor, int textAlignment)
 {
 	// index vinha do RPC sem limite inferior e 'text' sem validacao: indice
-	// negativo escrevia antes do array e strcpy estourava o buffer de 2048.
+	// negativo escrevia antes do array e o strcpy estourava o buffer de 2048.
 	if (index < 0 || index >= 16 || text == nullptr) return;
 
 	if (m_MaterialTextTexture[index]) {
@@ -417,7 +435,11 @@ void CObject::SetMaterialText(int index, char* text, int materialSize, char* fon
 		m_szMaterialText[index] = nullptr;
 	}
 
-	m_szMaterialText[index] = new char[2048];
+	m_szMaterialText[index] = new (std::nothrow) char[2048];
+	if (m_szMaterialText[index] == nullptr) {
+		LOGW("objeto %d: falha de memoria no textdraw %d", m_iModel, index);
+		return;
+	}
 	strncpy(m_szMaterialText[index], text, 2047);
 	m_szMaterialText[index][2047] = '\0';
 
@@ -560,7 +582,7 @@ void CObject::SetAttachedObject(uint16_t ObjectID, CVector* vecPos, CVector* vec
 	// Anexado nao anda sozinho: um MoveObject pendente brigaria com a matriz do pai.
 	m_byteMoving &= ~1;
 
-	if (!pNetGame || m_pEntity == nullptr)
+	if (!pNetGame || m_pEntity == nullptr || m_dwGTAId == 0)
 		return;
 
 	CObjectPool* pObjectPool = pNetGame->GetObjectPool();
@@ -581,7 +603,7 @@ void CObject::SetAttachedVehicle(uint16_t VehicleID, CVector* vecPos, CVector* v
 
 	m_byteMoving &= ~1;
 
-	if (!pNetGame || m_pEntity == nullptr)
+	if (!pNetGame || m_pEntity == nullptr || m_dwGTAId == 0)
 		return;
 
 	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
@@ -595,10 +617,10 @@ void CObject::AttachToVehicle(CVehicle* pVehicle)
 {
 	// attach_object_to_car usa o handle do pool (m_dwGTAId), o mesmo tipo de
 	// handle de objeto/veiculo que os outros opcodes de script usam.
-	if (!pVehicle || pVehicle->m_pVehicle == nullptr || m_pEntity == nullptr)
+	if (!pVehicle || pVehicle->m_pVehicle == nullptr || m_pEntity == nullptr || m_dwGTAId == 0)
 		return;
 
-	if (GamePool_Object_GetAt(m_dwGTAId) == nullptr)
+	if (GamePool_Object_GetAt(static_cast<int>(m_dwGTAId)) == nullptr)
 		return;
 
 	// Reanexar a cada frame fazia o objeto piscar/saltar no veiculo.
@@ -606,18 +628,19 @@ void CObject::AttachToVehicle(CVehicle* pVehicle)
 		return;
 
 	ScriptCommand(&attach_object_to_car,
-	              m_dwGTAId,
+	              static_cast<int>(m_dwGTAId),
 	              static_cast<int>(pVehicle->m_dwGTAId),
 	              m_vecAttachedPos.x, m_vecAttachedPos.y, m_vecAttachedPos.z,
 	              m_vecAttachedRot.x, m_vecAttachedRot.y, m_vecAttachedRot.z);
 }
 void CObject::AttachToObject(CObject* pObject)
 {
-    if (GamePool_Object_GetAt(m_dwGTAId)) {
+    if (m_dwGTAId == 0) return;
+    if (GamePool_Object_GetAt(static_cast<int>(m_dwGTAId))) {
         if (!ScriptCommand(&is_object_attached, m_dwGTAId)) {
             ScriptCommand(&attach_object_to_object,
-                          m_dwGTAId,
-                          pObject->m_dwGTAId,
+                          static_cast<int>(m_dwGTAId),
+                          static_cast<int>(pObject->m_dwGTAId),
                           m_vecAttachedPos.x,
                           m_vecAttachedPos.y,
                           m_vecAttachedPos.z,
@@ -637,8 +660,8 @@ bool CObject::AttachedToMovingEntity()
 
 void CObject::SetPos(float x, float y, float z)
 {
-    if (GamePool_Object_GetAt(m_dwGTAId))
-    {
-        ScriptCommand(&put_object_at, m_dwGTAId, x, y, z);
-    }
+    if (m_dwGTAId == 0 || GamePool_Object_GetAt(static_cast<int>(m_dwGTAId)) == nullptr)
+        return;
+
+    ScriptCommand(&put_object_at, static_cast<int>(m_dwGTAId), x, y, z);
 }

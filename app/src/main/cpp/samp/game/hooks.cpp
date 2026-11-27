@@ -464,31 +464,29 @@ void CObject_Render_hook(CObjectGta* thiz)
     if (object == nullptr)
         return;
 
-    if(pNetGame)
+    if (pNetGame)
     {
         CObject *pObject = pNetGame->GetObjectPool()->FindObjectFromGtaPtr(object);
-        if(pObject && pObject->m_pEntity)
+        if (pObject && pObject->m_pEntity && pObject->m_dwGTAId != 0)
         {
             RwObject* rwObject = (RwObject*)pObject->m_pEntity->m_pRwObject;
-            if(rwObject)
+            if (rwObject)
             {
                 // SetObjectMaterial
-                if(pObject->m_bHasMaterial || pObject->m_bHasMaterialText)
+                if (pObject->m_bHasMaterial || pObject->m_bHasMaterialText)
                 {
                     RwFrameForAllObjects((RwFrame*)rwObject->parent, (RwObject *(*)(RwObject *, void *))ObjectMaterialCallBack, pObject);
                     //RpAtomic* atomic = (RpAtomic*)object->m_pRwAtomic;
                     //RpGeometryForAllMaterials(atomic->geometry, ObjectMaterialCallBack, (void*)pObject);
                 }
                 // SetObjectMaterialText
-                if(pObject->m_bHasMaterialText)
+                if (pObject->m_bHasMaterialText)
                 {
                     RwFrameForAllObjects((RwFrame*)rwObject->parent, (RwObject *(*)(RwObject *, void *))ObjectMaterialTextCallBack, pObject);
                     //RpAtomic* atomic = (RpAtomic*)object->m_pRwAtomic;
                     //RpGeometryForAllMaterials(atomic->geometry, ObjectMaterialTextCallBack, (void*)pObject);
                 }
             }
-
-
         }
     }
 

@@ -266,13 +266,16 @@ void ScrCreateObject(RPCParameters* rpcParams)
 
     if (!pObjectPool->New(ObjectID, iModel, vecPos, vecRot, fDrawDistance))
     {
-        LOGW("CreateObject falhou: id=%d model=%d", static_cast<int>(ObjectID), iModel);
+        LOGW("CreateObject falhou alocacao: id=%d model=%d", static_cast<int>(ObjectID), iModel);
         return;
     }
 
     CObject* pObject = pObjectPool->GetAt(ObjectID);
     if (pObject == nullptr)
+    {
+        LOGW("CreateObject falhou slot: id=%d model=%d", static_cast<int>(ObjectID), iModel);
         return;
+    }
 
     if (AttachedObjectID != INVALID_OBJECT_ID)
         pObject->SetAttachedObject(AttachedObjectID, &vecAttachOffset, &vecAttachRot, bSyncRotation != 0);

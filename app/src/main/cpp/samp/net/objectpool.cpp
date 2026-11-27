@@ -46,15 +46,18 @@ bool CObjectPool::New(OBJECTID ObjectID, int iModel, CVector vecPos, CVector vec
 
 bool CObjectPool::Delete(OBJECTID ObjectID)
 {
-    if (ObjectID < MAX_OBJECTS && m_bObjectSlotState[ObjectID])
+    if (ObjectID >= MAX_OBJECTS)
+        return false;
+
+    if (m_bObjectSlotState[ObjectID])
     {
         CObject* pObject = m_pObjects[ObjectID];
-        if (pObject)
+        if (pObject != nullptr)
         {
             delete m_pObjects[ObjectID];
             m_pObjects[ObjectID] = nullptr;
-            m_bObjectSlotState[ObjectID] = false;
         }
+        m_bObjectSlotState[ObjectID] = false;
     }
 
     return true;
@@ -107,7 +110,7 @@ void CObjectPool::ProcessMaterialText()
 {
     for (OBJECTID ObjectID = 0; ObjectID < MAX_OBJECTS; ObjectID++)
     {
-        if (m_pObjects[ObjectID] && m_bObjectSlotState[ObjectID] == true)
+        if (m_pObjects[ObjectID] != nullptr && m_bObjectSlotState[ObjectID] == true)
         {
             m_pObjects[ObjectID]->ProcessMaterialText();
         }
