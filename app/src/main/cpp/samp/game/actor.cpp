@@ -19,6 +19,9 @@ CActor::CActor(int iSkin, float fX, float fY, float fZ, float fAngle)
 
     m_pPed = GamePool_Ped_GetAt(m_dwGTAId);
 
+    if (!m_pPed)
+        return;
+
     ForceTargetRotation(fAngle);
     m_pPed->SetPosn(fX, fY, fZ);
 
@@ -27,6 +30,9 @@ CActor::CActor(int iSkin, float fX, float fY, float fZ, float fAngle)
 // 0.3.7
 CActor::~CActor()
 {
+    if (!m_pPed)
+        return;
+
     auto modelId = m_pPed->m_nModelIndex;
 
     if (IsValidGamePed(m_pPed))
@@ -95,15 +101,19 @@ void CActor::ApplyAnimation(const char* szAnimName, const char* szAnimLib, float
 // 0.3.7
 void CActor::ClearAnimation()
 {
-	if (m_pPed) {
-		// CPedIntelligence::FlushImmediately
-		//((void (*)(PED_TASKS_TYPE*, bool))(g_libGTASA + 0x4C0A44 + 1))(m_pPed->Tasks, true);
-	}
+    // Estava vazio: ClearActorAnimations() do servidor nao parava a animacao.
+    // 0x0792 = ClearCharTasksImmediately (mesmo opcode usado para ator no PC).
+    if (!m_pPed) return;
+    if (!GamePool_Ped_GetAt(m_dwGTAId)) return;
+
+    ScriptCommand(&clear_char_tasks_immediately, m_dwGTAId);
 }
 // 0.3.7
 void CActor::SetFacingAngle(float fAngle)
 {
-	if (m_pPed && GamePool_Ped_GetAt(m_dwGTAId)) {
-		m_pPed->m_fAimingRotation = DegToRad(fAngle);
-	}
+    if (!m_pPed || !GamePool_Ped_GetAt(m_dwGTAId)) return;
+
+    // So mexer em m_fAimingRotation nao girava um ator parado: o angulo
+    // visivel e o m_fCurrentRotation (e o opcode set_actor_z_angle).
+    ForceTargetRotation(fAngle);
 }

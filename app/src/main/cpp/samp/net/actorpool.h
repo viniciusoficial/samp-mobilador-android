@@ -26,12 +26,12 @@ public:
 
     CActor* GetAt(PLAYERID ActorID) {
         if (ActorID < MAX_ACTORS && m_bActorSlotState[ActorID]) {
-            if (m_pActors[ActorID]) {
-                return m_pActors[ActorID];
-            }
-
-            return nullptr;
+            return m_pActors[ActorID];
         }
+
+        // Faltava este return: ID invalido vindo do servidor devolvia
+        // lixo da pilha como se fosse CActor*.
+        return nullptr;
     }
     // 0.3.7
     PLAYERID FindIDFromGtaPtr(CPedGTA* pPed) {

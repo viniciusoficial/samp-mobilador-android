@@ -235,33 +235,27 @@ void CPlayerPool::DeactivateAll()
 }
 // 0.3.7
 void CPlayerPool::ProcessAttachedObjects()
-{/*
+{
+	// O corpo estava todo comentado: os objetos de SetPlayerAttachedObject
+	// existiam no mapa, mas a matriz deles nunca era recalculada por frame,
+	// entao ficavam parados no ponto onde o player estava ao criar.
 	if (m_pLocalPlayer)
 	{
 		CPlayerPed* pPlayerPed = m_pLocalPlayer->GetPlayerPed();
-		if (pPlayerPed)
-		{
-			pPlayerPed->ProcessSpecialAction(pPlayerPed->iSpecialAction);
+		if (pPlayerPed && pPlayerPed->m_pPed)
 			pPlayerPed->ProcessAttach();
-            pPlayerPed->m_pPed->GetIntelligence()->ProcessAfterPreRender();
-		}
 	}
 
 	for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
 	{
 		CRemotePlayer* pRemotePlayer = GetAt(playerId);
-		if (pRemotePlayer)
-		{
-			CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
-			if (pPlayerPed && pPlayerPed->m_pPed && !pPlayerPed->m_pPed->m_bRemoveFromWorld)
-			{
-				pPlayerPed->ProcessSpecialAction(pPlayerPed->iSpecialAction);
-				pPlayerPed->ProcessAttach();
-                pPlayerPed->m_pPed->GetIntelligence()->ProcessAfterPreRender();
-			}
-		}
+		if (!pRemotePlayer)
+			continue;
+
+		CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
+		if (pPlayerPed && pPlayerPed->m_pPed)
+			pPlayerPed->ProcessAttach();
 	}
- */
 }
 // 0.3.7
 void CPlayerPool::ApplyCollisionChecking()

@@ -99,6 +99,14 @@ void RemoveOccludersInRadius(RwV3d vecPos, float fRadius);
 RwTexture* LoadTextureFromTxd(const char* txdname, const char* texturename);
 uintptr_t LoadTexture(const char* texname);
 
+// Slots de textura para TextDraw. 200 era pouco para servidores que usam
+// muitos sprites/previews ao mesmo tempo (os ultimos ficavam sem textura).
+#define MAX_TEXT_DRAW_TEXTURE_SLOTS 512
+
+// Cache compartilhado das texturas usadas por TextDraw (estilo 4 / sprites).
+uintptr_t GetTextDrawTextureCached(const char* szSlot, const char* szTexture);
+void ReleaseTextDrawTexture(uintptr_t texture);
+
 RpAtomic* ObjectMaterialCallBack(RpAtomic* rpAtomic, CObject* pObject);
 RpAtomic* ObjectMaterialTextCallBack(RpAtomic* rpAtomic, CObject* pObject);
 

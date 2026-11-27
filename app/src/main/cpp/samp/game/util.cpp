@@ -1,6 +1,8 @@
 #include "../main.h"
 #include "game.h"
+#include "util.h"
 #include "RW/RenderWare.h"
+#include "sprite2d.h"
 #include <cmath>
 #include "../net/netgame.h"
 #include "World.h"
@@ -2003,12 +2005,11 @@ uintptr_t LoadTexture(const char* texname)
     {
         uintptr_t texture = (uintptr_t)CUtil::LoadTextureFromDB(texdb[i], texname);
         if (texture != 0) {
-            Log("Texture: %s loaded from %s", texname, texdb[i]);
             return texture;
         }
     }
 
-    Log("Texture: %s not found!", texname);
+    LOGW("texture not found: %s", texname);
     return 0;
 }
 
@@ -2224,19 +2225,126 @@ void RemoveObjectInRange(int iModel, RwV3d vecPos, float fRange)
 
 /* =========== TexturedTextDraw ============= */
 
-bool bTextDrawTextureSlotState[200];
-uintptr_t TextDrawTexture[200];
+bool bTextDrawTextureSlotState[MAX_TEXT_DRAW_TEXTURE_SLOTS];
+uintptr_t TextDrawTexture[MAX_TEXT_DRAW_TEXTURE_SLOTS];
+
+/*
+ * Cache de texturas de TextDraw (estilo 4 = sprite "txd:textura" e previews).
+ *
+ * Antes cada textdraw carregava a propria copia da textura e cada atualizacao
+ * de texto refazia a busca em todos os bancos, mesmo quando a textura nao
+ * existia no texdb do jogador. Agora cada "txd:textura" e' resolvido uma unica
+ * vez por sessao: a mesma RwTexture e' compartilhada por N textdraws (refcount)
+ * e as falhas ficam memorizadas, sem repetir I/O nem log.
+ */
+struct TextDrawTextureCacheEntry
+{
+	char      szKey[144];
+	uintptr_t texture;
+	int32_t   refCount;
+};
+
+#define TEXT_DRAW_TEXTURE_CACHE_SIZE 160
+static TextDrawTextureCacheEntry s_textDrawTextureCache[TEXT_DRAW_TEXTURE_CACHE_SIZE];
+static int32_t s_textDrawTextureCacheCount = 0;
+
+extern uintptr_t LoadFromTxdSlot(const char* szSlot, const char* szTexture);
+
+static char ToLowerAscii(char c)
+{
+	return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+}
+
+static void BuildTextDrawTextureKey(char* out, size_t outSize, const char* szSlot, const char* szTexture)
+{
+	size_t o = 0;
+	for (const char* p = szSlot; p && *p && o + 1 < outSize; p++) out[o++] = ToLowerAscii(*p);
+	if (o + 1 < outSize) out[o++] = ':';
+	for (const char* p = szTexture; p && *p && o + 1 < outSize; p++) out[o++] = ToLowerAscii(*p);
+	out[o] = 0;
+}
+
+// Retorna 0 quando a textura nao existe (resultado memorizado).
+uintptr_t GetTextDrawTextureCached(const char* szSlot, const char* szTexture)
+{
+	if (!szSlot || !szTexture || !szSlot[0] || !szTexture[0])
+		return 0;
+
+	char szKey[144];
+	BuildTextDrawTextureKey(szKey, sizeof(szKey), szSlot, szTexture);
+
+	for (int32_t i = 0; i < s_textDrawTextureCacheCount; i++)
+	{
+		if (strcmp(s_textDrawTextureCache[i].szKey, szKey) == 0)
+		{
+			if (s_textDrawTextureCache[i].texture)
+				s_textDrawTextureCache[i].refCount++;
+			return s_textDrawTextureCache[i].texture;
+		}
+	}
+
+	uintptr_t texture = LoadFromTxdSlot(szSlot, szTexture);
+
+	if (s_textDrawTextureCacheCount < TEXT_DRAW_TEXTURE_CACHE_SIZE)
+	{
+		TextDrawTextureCacheEntry& entry = s_textDrawTextureCache[s_textDrawTextureCacheCount++];
+		strncpy(entry.szKey, szKey, sizeof(entry.szKey) - 1);
+		entry.szKey[sizeof(entry.szKey) - 1] = 0;
+		entry.texture = texture;
+		entry.refCount = texture ? 1 : 0;
+	}
+
+	return texture;
+}
+
+// Solta uma referencia; a RwTexture so e' destruida quando o ultimo textdraw sai.
+void ReleaseTextDrawTexture(uintptr_t texture)
+{
+	if (!texture)
+		return;
+
+	for (int32_t i = 0; i < s_textDrawTextureCacheCount; i++)
+	{
+		TextDrawTextureCacheEntry& entry = s_textDrawTextureCache[i];
+		if (entry.texture != texture)
+			continue;
+
+		if (entry.refCount > 1)
+		{
+			entry.refCount--;
+			return;
+		}
+
+		RwTextureDestroy(reinterpret_cast<RwTexture*>(texture));
+		// Remove a entrada para que um textdraw novo com o mesmo nome possa
+		// resolver a textura de novo em vez de herdar um cache vazio.
+		s_textDrawTextureCache[i] = s_textDrawTextureCache[--s_textDrawTextureCacheCount];
+		return;
+	}
+
+	// Textura de snapshot/preview: dono unico, criada fora do cache.
+	RwTextureDestroy(reinterpret_cast<RwTexture*>(texture));
+}
 
 // 0.3.7
 void ResetTextDrawTextures()
 {
+	for (int32_t i = 0; i < s_textDrawTextureCacheCount; i++)
+	{
+		if (s_textDrawTextureCache[i].texture)
+			RwTextureDestroy(reinterpret_cast<RwTexture*>(s_textDrawTextureCache[i].texture));
+		s_textDrawTextureCache[i].texture = 0;
+		s_textDrawTextureCache[i].refCount = 0;
+	}
+	s_textDrawTextureCacheCount = 0;
+
 	memset(bTextDrawTextureSlotState, 0, sizeof(bTextDrawTextureSlotState));
 	memset(TextDrawTexture, 0, sizeof(TextDrawTexture));
 }
 // 0.3.7
 int GetFreeTextDrawTextureSlot()
 {
-	for (int i = 0; i < 200; i++)
+	for (int i = 0; i < MAX_TEXT_DRAW_TEXTURE_SLOTS; i++)
 	{
 		if (bTextDrawTextureSlotState[i] == false) {
 			bTextDrawTextureSlotState[i] = true;
@@ -2251,12 +2359,12 @@ void DestroyTextDrawTexture(int index)
 {
 	uintptr_t pTexture;
 
-	if (index >= 0 && index < 200)
+	if (index >= 0 && index < MAX_TEXT_DRAW_TEXTURE_SLOTS)
 	{
 		pTexture = TextDrawTexture[index];
 		bTextDrawTextureSlotState[index] = false;
 		if (pTexture)
-			RwTextureDestroy(reinterpret_cast<RwTexture *>(pTexture));
+			ReleaseTextDrawTexture(pTexture);
 
 		TextDrawTexture[index] = 0;
 	}
@@ -2298,12 +2406,15 @@ void DrawTexture(uintptr_t texture, CRect* rect, uint32_t dwColor)
 
 void DrawTextureUV(uintptr_t texture, CRect* rect, uint32_t dwColor, float *uv)
 {
-	if (texture)
+	if (texture && rect && uv)
 	{
 		RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERLINEAR);
-		// CSprite2d::Draw(CRect  const& posn, CRGBA  const& color, float u1, float v1, float u2, float v2, float u3, float v3, float u4, float v4);
-		((void(*)(uintptr_t, CRect*, uint32_t*, float, float, float, float, float, float, float, float))
-			(g_libGTASA + 0x5F7908))(texture, rect, &dwColor, uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], uv[6], uv[7]);
+		CSprite2d sprite{};
+		sprite.m_pTexture = reinterpret_cast<RwTexture*>(texture);
+		// CSprite2d::Draw(CRect const& posn, CRGBA const& color, float u1, float v1, float u2, float v2, float u3, float v3, float u4, float v4);
+		((void(*)(CSprite2d*, CRect*, uint32_t*, float, float, float, float, float, float, float, float))
+			(g_libGTASA + 0x5F7908))(&sprite, rect, &dwColor, uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], uv[6], uv[7]);
+		sprite.m_pTexture = nullptr;
 	}
 }
 
@@ -2318,6 +2429,13 @@ float GetDistance(RwV3d vec1, RwV3d vec2)
 CPedGTA* dwPlayerPedPtrs[PLAYER_PED_SLOTS];
 void SetPlayerPedPtrRecord(uint8_t bytePlayer, CPedGTA* dwPedPtr)
 {
+	// Bounds check: snapshot peds use player numbers above PLAYER_PED_SLOTS (ex: 208).
+	// Without this the write runs past dwPlayerPedPtrs and corrupts adjacent globals.
+	if (bytePlayer >= PLAYER_PED_SLOTS)
+	{
+		return;
+	}
+
 	dwPlayerPedPtrs[bytePlayer] = dwPedPtr;
 }
 uint8_t FindPlayerNumFromPedPtr(CPedGTA* dwPedPtr)
@@ -2796,12 +2914,15 @@ bool IsGameEntityArePlaceable(CEntityGTA *pEntity)
 
 RpAtomic* ObjectMaterialCallBack(RpAtomic* rpAtomic, CObject* pObject)
 {
-    if(!pObject) return rpAtomic;
+    if(!pObject || !rpAtomic || !rpAtomic->geometry || !rpAtomic->geometry->matList.materials) return rpAtomic;
     int iTotalEntries = rpAtomic->geometry->matList.numMaterials;
     if (iTotalEntries > 16) iTotalEntries = 16; // fix fucking bug :|
     for (int i = 0; i < iTotalEntries; i++)
     {
-        if(pObject->m_MaterialTexture[i])
+        // Aplica so' o que foi realmente definido como material; antes um
+        // material de texto tambem caia aqui e a textura era sobrescrita.
+        if(pObject->m_MaterialTexture[i] && pObject->m_iMaterialType[i] == MATERIAL_TYPE_MATERIAL &&
+           rpAtomic->geometry->matList.materials[i])
             rpAtomic->geometry->matList.materials[i]->texture = (RwTexture*)pObject->m_MaterialTexture[i];
             /*material->color.red = pObject->m_dwMaterialColor[i]->red;
             material->color.green = pObject->m_dwMaterialColor[i]->green;
@@ -2814,13 +2935,17 @@ RpAtomic* ObjectMaterialCallBack(RpAtomic* rpAtomic, CObject* pObject)
 
 RpAtomic* ObjectMaterialTextCallBack(RpAtomic* rpAtomic, CObject* pObject)
 {
-    if(!pObject->m_MaterialTextTexture || rpAtomic->object.object.type != 1) return rpAtomic;
+    if(!pObject || !rpAtomic || !rpAtomic->geometry || !rpAtomic->geometry->matList.materials) return rpAtomic;
 
     int iTotalEntries = rpAtomic->geometry->matList.numMaterials;
     if (iTotalEntries > 16) iTotalEntries = 16; // fix fucking bug :|
     for (int i = 0; i < iTotalEntries; i++)
     {
-        if(pObject->m_MaterialTextTexture[i])
+        // So' materiais declarados como texto recebem a textura gerada (as
+        // placas com texto do servidor). Antes qualquer textura existente era
+        // aplicada em todos os materiais do objeto.
+        if(pObject->m_MaterialTextTexture[i] && pObject->m_iMaterialType[i] == MATERIAL_TYPE_TEXT &&
+           rpAtomic->geometry->matList.materials[i])
         {
             rpAtomic->geometry->matList.materials[i]->texture = (RwTexture*)pObject->m_MaterialTextTexture[i];
         }

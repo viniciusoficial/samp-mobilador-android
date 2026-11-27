@@ -81,6 +81,7 @@ private:
 	CQuaternion m_quatStart;
 	CQuaternion m_quatTarget;
 	CVector		m_vecRotationTarget;
+	CVector		m_vecRotationStart;
 	CVector		m_vecSubRotationTarget;
 	float		m_fDistanceToTargetPoint;
 	uint32_t	m_dwMoveTick;

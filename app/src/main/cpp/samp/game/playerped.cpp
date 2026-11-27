@@ -2277,9 +2277,20 @@ void CPlayerPed::AttachObject(ATTACHED_OBJECT_INFO* pInfo, int iSlot)
     attach.dwSampBone   = pInfo->dwBoneId_MP;
     attach.dwBone = GetInternalBoneIDFromSampID(attach.dwSampBone);
 
-    CVector vecPos = m_pPed->GetPosition();
+    CVector vecPos = m_pPed ? m_pPed->GetPosition() : CVector{ 0.0f, 0.0f, 0.0f };
     CVector vecRot{ 0.0f, 0.0f, 0.0f };
     attach.pObject = new CObject(pInfo->dwModelId, vecPos, vecRot, 200.0f, 1);
+
+    // O modelo pode nao existir no aparelho (mod do PC): o CObject sai sem
+    // entidade e o SetPlayerAttachedObject do servidor derrubava aqui.
+    if (attach.pObject == nullptr || attach.pObject->m_pEntity == nullptr)
+    {
+        delete attach.pObject;
+        attach.pObject = nullptr;
+        m_aAttachedObject.erase(iSlot);
+        return;
+    }
+
     attach.pObject->m_pEntity->m_bUsesCollision = false;
 }
 

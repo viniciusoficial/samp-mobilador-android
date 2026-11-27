@@ -73,6 +73,8 @@ void C3DTextLabelPool::Render(ImGuiRenderer* renderer)
 {
     if (!renderer || !pGame || !pNetGame) return;
 
+    CrashTrace("label:render");
+
     CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
     if (!pPlayerPed || !pPlayerPed->m_pPed) return;
 
@@ -92,6 +94,7 @@ void C3DTextLabelPool::Render(ImGuiRenderer* renderer)
         if (!m_bSlotUsed[i]) continue;
 
         TEXT_LABEL* pTextLabel = m_TextLabels[i];
+        CrashTrace("label:slot", i);
         if (!pTextLabel) {
             m_bSlotUsed[i] = false;
             continue;
@@ -108,9 +111,19 @@ void C3DTextLabelPool::Render(ImGuiRenderer* renderer)
                     float fDist = pPlayer->GetDistanceFromLocalPlayer();
                     if (fDist < pTextLabel->fDistance && fDist >= 0.0f) {
                         CPlayerPed* pRemotePed = pPlayer->GetPlayerPed();
-                        if (pRemotePed && pRemotePed->m_pPed && pRemotePed->m_pPed->IsAdded()) {
-                            CVector matBone;
+                        // m_pRwClump nulo = modelo do ped ainda sem skeleton: GetBonePosition
+                        // desreferencia a hierarquia de animacao e derruba o jogo.
+                        if (pRemotePed && pRemotePed->m_pPed && pRemotePed->m_pPed->IsAdded() &&
+                            pRemotePed->m_pPed->m_pRwClump) {
+                            CVector matBone = { 0.0f, 0.0f, 0.0f };
                             pRemotePed->GetBonePosition(8, &matBone);
+
+                            // Bone nao escrito (ped sem skeleton/bone 8): cairia
+                            // em (0,0,0), a origem do mapa, e o texto do jogador
+                            // nunca aparecia. Usa a posicao do ped.
+                            if (matBone.x == 0.0f && matBone.y == 0.0f && matBone.z == 0.0f)
+                                matBone = pRemotePed->m_pPed->GetPosition();
+
                             vecTextPos.x = matBone.x + pTextLabel->vecPos.x;
                             vecTextPos.y = matBone.y + pTextLabel->vecPos.y;
                             vecTextPos.z = matBone.z + 0.23f + pTextLabel->vecPos.z;
@@ -171,29 +184,42 @@ void C3DTextLabelPool::Draw(ImGuiRenderer* renderer, TEXT_LABEL* label, const CV
     if (!label->bTestLOS || hitEntity) {
         float fDist = pLocalPed->m_pPed->GetDistanceFromPoint(vecPos.x, vecPos.y, vecPos.z);
         if (fDist <= label->fDistance && fDist >= 0.0f) {
-            CVector vecOut;
-            typedef void (*CalcScreenCoors_t)(CVector*, CVector*, float*, float*, bool, bool);
-            CalcScreenCoors_t CalcScreenCoors = (CalcScreenCoors_t)(g_libGTASA + (VER_x32 ? 0x005C57E8 + 1 : 0x6E9DF8));
+            CVector vecOut = { 0.0f, 0.0f, 0.0f };
 
-            if (CalcScreenCoors) {
-                CalcScreenCoors((CVector*)&vecPos, &vecOut, 0, 0, 0, 0);
+            // CSprite::CalcScreenCoors. Era 0x6E9DF8 aqui (codigo morto, nunca
+            // chamado): o resto do cliente (nametags, baloes, icone de voz) usa
+            // 0x5F449C. Chamar o endereco errado executava qualquer coisa com a
+            // ABI errada e derrubava o jogo no primeiro label de player.
+            ((void (*)(CVector*, CVector*, float*, float*, bool, bool))(
+                    g_libGTASA + (VER_x32 ? 0x005C57E8 + 1 : 0x5F449C)))((CVector*)&vecPos, &vecOut, 0, 0, 0, 0);
 
-                if (vecOut.z < 1.0f) return;
+            if (vecOut.z < 1.0f) return;
 
-                std::stringstream ss_data(text);
-                std::string s_row;
-                float fontSize = UISettings::fontSize() / 2;
-                if (fontSize <= 0.0f) fontSize = 10.0f;
+            // Projecao invalida (NaN/inf) nao pode virar drawText com coordenada lixo.
+            if (!(vecOut.x > -1e6f && vecOut.x < 1e6f) || !(vecOut.y > -1e6f && vecOut.y < 1e6f))
+                return;
 
-                while (std::getline(ss_data, s_row, '\n')) {
-                    if (s_row.empty()) continue;
+            float fontSize = UISettings::fontSize() / 2;
+            if (fontSize <= 0.0f) fontSize = 10.0f;
 
-                    ImVec2 sz = renderer->calculateTextSize(s_row, fontSize);
+            // Sem std::stringstream: ele alocava uma vez por label por frame e
+            // com varios labels na tela isso derrubava o FPS.
+            const char* pLine = text.c_str();
+            while (pLine && *pLine) {
+                const char* pEnd = strchr(pLine, '\n');
+                const size_t lineLen = pEnd ? (size_t)(pEnd - pLine) : strlen(pLine);
+
+                if (lineLen > 0) {
+                    std::string sRow(pLine, lineLen);
+                    ImVec2 sz = renderer->calculateTextSize(sRow, fontSize);
                     renderer->drawText(ImVec2(vecOut.x - (sz.x / 2), vecOut.y),
                                        __builtin_bswap32(dwColor | 0x000000FF),
-                                       s_row, true, fontSize);
+                                       sRow, true, fontSize);
                     vecOut.y += fontSize;
                 }
+
+                if (!pEnd) break;
+                pLine = pEnd + 1;
             }
         }
     }

@@ -24,21 +24,43 @@ CActorPool::~CActorPool()
 // 0.3.7
 void CActorPool::New(NEW_ACTOR* pNewActor)
 {
+    if (pNewActor == nullptr)
+        return;
+
+    // ID do servidor sem checagem estourava m_pActors[]/m_pGtaPed[].
+    if (pNewActor->ActorID >= MAX_ACTORS)
+        return;
+
     if (m_pActors[pNewActor->ActorID])
     {
         //if (gui) gui->chat()->addDebugMessage("Warning: actor %u was not deleted", pNewActor->ActorID);
         Delete(pNewActor->ActorID);
     }
 
-    CActor* pActor = new CActor(pNewActor->iSkin,
-                                pNewActor->vecPos.x,
-                                pNewActor->vecPos.y,
-                                pNewActor->vecPos.z,
-                                pNewActor->fAngle);
+    CActor* pActor = nullptr;
+
+    // CActor lanca std::runtime_error quando o modelo nao esta no aparelho;
+    // sem o catch a excecao subia pelo handler do RakNet e matava o jogo.
+    try
+    {
+        pActor = new CActor(pNewActor->iSkin,
+                            pNewActor->vecPos.x,
+                            pNewActor->vecPos.y,
+                            pNewActor->vecPos.z,
+                            pNewActor->fAngle);
+    }
+    catch (...)
+    {
+        pActor = nullptr;
+    }
+
+    if (pActor == nullptr || pActor->m_pPed == nullptr)
+    {
+        delete pActor;
+        return;
+    }
 
     m_pActors[pNewActor->ActorID] = pActor;
-
-    if (!pActor) return;
 
     m_pGtaPed[pNewActor->ActorID] = pActor->m_pPed;
     m_bActorSlotState[pNewActor->ActorID] = true;
