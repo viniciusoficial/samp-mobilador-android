@@ -31,8 +31,6 @@ CTextDrawPool::~CTextDrawPool()
 // 0.3.7
 void CTextDrawPool::New(uint16_t wTextDrawID, TEXT_DRAW_TRANSMIT* pTextDrawTransmit, const char* szText)
 {
-    if (wTextDrawID >= MAX_TEXT_DRAWS) return;
-
     if (m_pTextDraw[wTextDrawID]) {
         Delete(wTextDrawID);
     }
@@ -46,8 +44,6 @@ void CTextDrawPool::New(uint16_t wTextDrawID, TEXT_DRAW_TRANSMIT* pTextDrawTrans
 // 0.3.7
 void CTextDrawPool::Delete(uint16_t wTextDrawID)
 {
-    if (wTextDrawID >= MAX_TEXT_DRAWS) return;
-
     if (m_pTextDraw[wTextDrawID]) {
         delete m_pTextDraw[wTextDrawID];
         m_pTextDraw[wTextDrawID] = nullptr;
@@ -59,7 +55,7 @@ void CTextDrawPool::Draw()
 {
     for (int i = 0; i < MAX_TEXT_DRAWS; i++)
     {
-        if (m_bSlotState[i] && m_pTextDraw[i]) {
+        if (m_bSlotState[i]) {
             m_pTextDraw[i]->Draw();
         }
     }
@@ -83,22 +79,15 @@ void CTextDrawPool::SetSelectState(bool bState, uint32_t dwColor)
         m_bSelectState = true;
         m_dwHoverColor = (((dwColor << 16) | dwColor & 0xFF00) << 8) | (((dwColor >> 16) | dwColor & 0xFF0000) >> 8);
         m_wClickedTextDrawID = 0xFFFF;
-        if (pGame) {
-            pGame->DisplayHUD(false);
-            // FindPlayerPed fica nulo durante o spawn/entre conexoes.
-            CPlayerPed* pPed = pGame->FindPlayerPed();
-            if (pPed) pPed->TogglePlayerControllable(false);
-        }
+        pGame->DisplayHUD(false);
+        pGame->FindPlayerPed()->TogglePlayerControllable(false);
     }
     else {
         m_bSelectState = false;
         m_dwHoverColor = 0;
         m_wClickedTextDrawID = 0xFFFF;
-        if (pGame) {
-            pGame->DisplayHUD(true);
-            CPlayerPed* pPed = pGame->FindPlayerPed();
-            if (pPed) pPed->TogglePlayerControllable(true);
-        }
+        pGame->DisplayHUD(true);
+        pGame->FindPlayerPed()->TogglePlayerControllable(true);
 
         SendClick();
 
@@ -115,12 +104,6 @@ void CTextDrawPool::SetSelectState(bool bState, uint32_t dwColor)
 
 void CTextDrawPool::SendClick()
 {
-    // 0xFFFF = nenhum textdraw clicado. SetSelectState(false) chamava SendClick
-    // sempre e o servidor recebia um click em textdraw inexistente (podia
-    // reabrir dialogo/menu que o jogador tinha acabado de fechar).
-    if (m_wClickedTextDrawID == 0xFFFF) return;
-    if (!pNetGame || !pNetGame->GetRakClient()) return;
-
     RakNet::BitStream bsClick;
     bsClick.Write(m_wClickedTextDrawID);
     pNetGame->GetRakClient()->RPC(&RPC_ClickTextDraw, &bsClick, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
@@ -144,6 +127,7 @@ bool CTextDrawPool::onTouchEvent(int type, bool multi, int x, int y)
 
             if (pTextDraw->m_TextDrawData.byteSelectable)
             {
+                Log("onTouchEvent textdraw 2");
                 switch (type)
                 {
                     case 2:
@@ -161,7 +145,10 @@ bool CTextDrawPool::onTouchEvent(int type, bool multi, int x, int y)
                         break;
 
                     case 1:
+                        Log("m_rectArea %f %f %f %f, clicked: %f %f", pTextDraw->m_rectArea.bottom, pTextDraw->m_rectArea.top,pTextDraw->m_rectArea.left,pTextDraw->m_rectArea.right,
+                            x,y);
                         if (IsPointInRect(x, y, &pTextDraw->m_rectArea)) {
+                            Log("Point is in rect");
                             m_wClickedTextDrawID = i;
                             SendClick();
                             pTextDraw->m_bHovered = false;

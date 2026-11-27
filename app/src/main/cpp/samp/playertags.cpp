@@ -21,149 +21,63 @@ CPlayerTags::~CPlayerTags() {}
 void CPlayerTags::Render(ImGuiRenderer* renderer)
 {
 	CVector vecPos;
+	RwMatrix matLocal, matPlayer;
 	int dwHitEntity;
 	char szNickBuf[64];
 
-	    if (!renderer) return;
-
-    CrashTrace("tags:render");
-
-    // Diagnostico: 1 linha a cada 3s dizendo exatamente onde as nametags param.
-	static int s_iFrame = 0;
-	const bool bDiag = (++s_iFrame >= 180);
-	if (bDiag) s_iFrame = 0;
-	if (!pNetGame || !pNetGame->m_pNetSet)
-	{
-		if (bDiag) LOGD("nametags: sem pNetGame/m_pNetSet");
-		return;
-	}
-	if (!pNetGame->m_pNetSet->bShowNameTags)
-	{
-		// O servidor manda ShowNameTags=0 no InitGame (ele desenha os nomes por
-		// conta propria, via 3D text labels). Loga junto o resto das settings
-		// para dar para confirmar no logcat que o pacote foi lido certo.
-		if (bDiag)
-		{
-			LOGD("nametags: desligado pelo servidor (bShowNameTags=0) drawDist=%.1f los=%d markers=%d",
-				 pNetGame->m_pNetSet->fNameTagDrawDistance,
-				 pNetGame->m_pNetSet->bNameTagLOS ? 1 : 0,
-				 pNetGame->m_pNetSet->iShowPlayerMarkers);
-		}
-		return;
-	}
-	if (!pGame) return;
-
-	// Nada aqui pode desreferenciar ponteiro nulo: este metodo roda todo frame,
-	// inclusive durante o spawn/remocao de jogadores.
-	CPlayerPed* pLocalPed = pGame->FindPlayerPed();
-	if (!pLocalPed || !pLocalPed->m_pPed)
-	{
-		if (bDiag) LOGD("nametags: ped local nulo");
-		return;
-	}
-
-	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
-	if (!pPlayerPool)
-	{
-		if (bDiag) LOGD("nametags: player pool nulo");
-		return;
-	}
-
 	static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0x9F86F8);
 
-	const float fDrawDistance = pNetGame->m_pNetSet->fNameTagDrawDistance;
-	const bool bLOS = pNetGame->m_pNetSet->bNameTagLOS;
-
-	int iActive = 0, iDrawn = 0;
-	int iSkipPed = 0, iSkipDistance = 0, iSkipAdded = 0, iSkipLOS = 0;
-
-	for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
+	if (pNetGame && pNetGame->m_pNetSet->bShowNameTags)
 	{
-		if (!pPlayerPool->GetSlotState(playerId)) continue;
+		CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+		matLocal = pGame->FindPlayerPed()->m_pPed->GetMatrix().ToRwMatrix();
 
-		CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(playerId);
-		// NPCs (atores/bots do servidor) tambem tem nametag no cliente 0.3.7;
-		// filtra-los deixava os NPCs sem nome nenhum.
-		if (!pRemotePlayer || !pRemotePlayer->IsActive() || !pRemotePlayer->m_bShowNameTag)
-			continue;
-
-		iActive++;
-
-		CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
-		// Sem clump (modelo ainda carregando) GetBonePosition acessa hierarquia
-		// de animacao invalida; nesse caso o ped e' descartado neste frame.
-		if (!pPlayerPed || !pPlayerPed->m_pPed || !pPlayerPed->m_pPed->m_pRwClump)
+		for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
 		{
-			iSkipPed++;
-			continue;
+			if (pPlayerPool->GetSlotState(playerId) == true)
+			{
+				CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(playerId);
+
+				if (pRemotePlayer && pRemotePlayer->IsActive() && pRemotePlayer->m_bShowNameTag && !pRemotePlayer->IsNPC())
+				{
+					CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
+
+					if (pPlayerPed && pPlayerPed->m_pPed->GetDistanceFromCamera() <= pNetGame->m_pNetSet->fNameTagDrawDistance)
+					{
+						if (!pPlayerPed->m_pPed->IsAdded()) continue;
+						vecPos.x = 0.0f;
+						vecPos.y = 0.0f;
+						vecPos.z = 0.0f;
+						pPlayerPed->GetBonePosition(8, &vecPos);
+
+						CAMERA_AIM* pCam = GameGetInternalAim();
+						dwHitEntity = 0;
+
+						if (pNetGame->m_pNetSet->bNameTagLOS)
+						{
+							dwHitEntity = CWorld::GetIsLineOfSightClear(vecPos, TheCamera.GetPosition(), true, false, false, true, false, false, false);
+						}
+
+						if (!pNetGame->m_pNetSet->bNameTagLOS || dwHitEntity && !pRemotePlayer->IsNPC())
+						{
+							sprintf(szNickBuf, "%s (%d)", pPlayerPool->GetPlayerName(playerId), playerId);
+							this->Draw(renderer,&vecPos, szNickBuf,
+									   pRemotePlayer->GetPlayerColor(),
+									   pPlayerPed->m_pPed->GetDistanceFromCamera(),
+									   pRemotePlayer->m_fReportedHealth,
+									   pRemotePlayer->m_fReportedArmour,
+									   pRemotePlayer->m_bIsAFK,
+									   false);
+						}
+					}
+				}
+			}
 		}
-
-		const float fDistance = pPlayerPed->m_pPed->GetDistanceFromCamera();
-		if (fDistance > fDrawDistance)
-		{
-			iSkipDistance++;
-			continue;
-		}
-
-		if (!pPlayerPed->m_pPed->IsAdded())
-		{
-			iSkipAdded++;
-			continue;
-		}
-
-		vecPos.x = 0.0f;
-		vecPos.y = 0.0f;
-		vecPos.z = 0.0f;
-		pPlayerPed->GetBonePosition(8, &vecPos);
-
-		// Se o bone nao foi escrito (ped sem skeleton carregado / bone 8 invalido
-		// nesta build) a projecao caia em (0,0,0) - origem do mapa - e a nametag
-		// ficava invisivel. Nesse caso usa a posicao do ped.
-		if (vecPos.x == 0.0f && vecPos.y == 0.0f && vecPos.z == 0.0f)
-		{
-			vecPos = pPlayerPed->m_pPed->GetPosition();
-			vecPos.z += 0.9f;
-		}
-
-		dwHitEntity = 0;
-		if (bLOS)
-		{
-			dwHitEntity = CWorld::GetIsLineOfSightClear(vecPos, TheCamera.GetPosition(), true, false, false, true, false, false, false);
-		}
-
-		if (!bLOS || dwHitEntity)
-		{
-			const char* szName = pPlayerPool->GetPlayerName(playerId);
-			snprintf(szNickBuf, sizeof(szNickBuf), "%s (%d)", szName ? szName : "Player", playerId);
-
-			this->Draw(renderer, &vecPos, szNickBuf,
-					   pRemotePlayer->GetPlayerColor(),
-					   fDistance,
-					   pRemotePlayer->m_fReportedHealth,
-					   pRemotePlayer->m_fReportedArmour,
-					   pRemotePlayer->m_bIsAFK,
-					   false);
-			iDrawn++;
-		}
-		else
-		{
-			iSkipLOS++;
-		}
-	}
-
-	// Diagnostico curto (1x a cada ~3s): diz exatamente qual filtro esta matando
-	// as nametags. Sem isso o log nao mostra nada e o problema fica invisivel.
-	if (bDiag)
-	{
-		LOGD("nametags: active=%d drawn=%d ped=%d dist=%d added=%d los=%d (losEnabled=%d show=1 drawDist=%.1f)",
-			 iActive, iDrawn, iSkipPed, iSkipDistance, iSkipAdded, iSkipLOS, bLOS ? 1 : 0, fDrawDistance);
 	}
 }
 
 void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick, uint32_t dwColor, float fDist, float fHealth, float fArmour, bool bAfk, bool bMicro)
 {
-	if (!renderer || !vec || !szNick) return;
-
 	CVector vecTagPos;
 
 	vecTagPos.x = vec->x;
@@ -171,32 +85,10 @@ void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick
 	vecTagPos.z = vec->z;
 	vecTagPos.z += 0.25f + (fDist * 0.0475f);
 
-	// Inicializado: se a projecao nao escrever nada, o teste abaixo descarta.
-	CVector vecOut = { 0.0f, 0.0f, 0.0f };
+	CVector vecOut;
 	((void (*)(CVector*, CVector*, float*, float*, bool, bool))(g_libGTASA + 0x5F449C))(&vecTagPos, &vecOut, 0, 0, 0, 0);
 
-	if (vecOut.z < 1.0f)
-	{
-		static bool s_bProjLogged = false;
-		if (!s_bProjLogged)
-		{
-			s_bProjLogged = true;
-			LOGD("nametag proj fora da tela: in=(%.1f %.1f %.1f) out=(%.1f %.1f %.1f)",
-				 vecTagPos.x, vecTagPos.y, vecTagPos.z, vecOut.x, vecOut.y, vecOut.z);
-		}
-		return;
-	}
-
-	{
-		static bool s_bDrawLogged = false;
-		if (!s_bDrawLogged)
-		{
-			s_bDrawLogged = true;
-			LOGD("nametag ok: screen=(%.0f %.0f) z=%.2f font=%.1f disp=(%.0f %.0f)",
-				 vecOut.x, vecOut.y, vecOut.z, UISettings::fontSize() / 2,
-				 ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y);
-		}
-	}
+	if (vecOut.z < 1.0f) return;
 
 	ImVec2 pos = ImVec2(vecOut.x, vecOut.y);
 	pos.x -= renderer->calculateTextSize(szNick, UISettings::fontSize() / 2).x / 2;

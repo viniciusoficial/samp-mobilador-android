@@ -3,8 +3,6 @@
 #include "util.h"
 #include "RW/RenderWare.h"
 #include "../gui/gui.h"
-#include <algorithm>
-#include <cmath>
 
 extern UI* pUI;
 extern CSnapShotHelper* pSnapShotHelper;
@@ -35,9 +33,6 @@ CTextDraw::CTextDraw(TEXT_DRAW_TRANSMIT* pTextDrawTransmit, const char* szText)
     m_TextDrawData.byteAlignLeft = pTextDrawTransmit->byteLeft;
     m_TextDrawData.byteAlignRight = pTextDrawTransmit->byteRight;
     m_TextDrawData.dwStyle = pTextDrawTransmit->byteStyle;
-    // Estilo fora de 0..5 (pacote invalido/malicioso) fazia
-    // CFont::SetFontStyle ler fora da tabela de fontes do GTA.
-    if (m_TextDrawData.dwStyle > 5) m_TextDrawData.dwStyle = 0;
 
     m_TextDrawData.fX = pTextDrawTransmit->fX;
     m_TextDrawData.fY = pTextDrawTransmit->fY;
@@ -54,10 +49,6 @@ CTextDraw::CTextDraw(TEXT_DRAW_TRANSMIT* pTextDrawTransmit, const char* szText)
     m_TextDrawData.wColor2 = pTextDrawTransmit->wColor2;
     m_TextDrawData.bHasKeyCode = false;
     m_TextDrawData.iTextureSlot = -1;
-    m_dwNextSnapshotAttempt = 0;
-    // SetText compara com o texto atual: o buffer precisa estar zerado antes.
-    memset(m_szText, 0, sizeof(m_szText));
-    memset(m_gxtString, 0, sizeof(m_gxtString));
     SetText(szText);
 
     if (m_TextDrawData.dwStyle == 4) {
@@ -77,12 +68,13 @@ CTextDraw::CTextDraw(TEXT_DRAW_TRANSMIT* pTextDrawTransmit, const char* szText)
 // 0.3.7
 CTextDraw::~CTextDraw()
 {
+    if (m_TextDrawData.iTextureSlot != -1 && m_TextDrawData.iTextureSlot != 0x0 && TextDrawTexture[m_TextDrawData.iTextureSlot]) RwTextureDestroy((RwTexture*)TextDrawTexture[m_TextDrawData.iTextureSlot]);
     DestroyTextDrawTexture(m_TextDrawData.iTextureSlot);
 }
 
 uintptr_t LoadFromTxdSlot(const char* szSlot, const char* szTexture)
 {
-    RwTexture* tex = nullptr;
+    RwTexture* tex;
     if (strncmp(szSlot, "none", 5u))
     {
         /*uintptr_t v10 = ((int (*)(const char*))(g_libGTASA + 0x55BB85))(szSlot);
@@ -129,6 +121,7 @@ uintptr_t LoadFromTxdSlot(const char* szSlot, const char* szTexture)
         tex = (RwTexture*)CUtil::LoadTextureFromDB(szSlot, szTexture);
     }
 
+   Log("%s loaded from %s", szTexture, szSlot);
     return (uintptr_t)tex;
 }
 
@@ -140,10 +133,6 @@ void CTextDraw::Draw()
 
     if (m_TextDrawData.dwStyle == 4) {
         return DrawTextured();
-    }
-
-    if (m_TextDrawData.dwStyle == 5) {
-        return;
     }
 
     return DrawDefault();
@@ -258,54 +247,25 @@ void CTextDraw::DrawTextured()
             0.0f, 1.0f,
             1.0f, 1.0f };
 
-    if (m_TextDrawData.iTextureSlot < 0 || m_TextDrawData.iTextureSlot >= MAX_TEXT_DRAW_TEXTURE_SLOTS) {
-        return;
+    if (m_bHovered) {
+        if(TextDrawTexture[m_TextDrawData.iTextureSlot] != 0)DrawTextureUV(TextDrawTexture[m_TextDrawData.iTextureSlot], &m_rectArea, m_dwHoverColor,
+                                                                           m_TextDrawData.dwStyle == 5 ? uv_reflected : uv_normal);
     }
-
-    uintptr_t texPtr = TextDrawTexture[m_TextDrawData.iTextureSlot];
-    if (texPtr == 0) {
-        // Textura inexistente no texdb (ou ainda carregando). Antes o retangulo
-        // era montado e nada era desenhado; agora sai antes de mexer em estado.
-        return;
+    else {
+        if(TextDrawTexture[m_TextDrawData.iTextureSlot] != 0)DrawTextureUV(TextDrawTexture[m_TextDrawData.iTextureSlot], &m_rectArea, m_TextDrawData.dwLetterColor,
+                                                                           m_TextDrawData.dwStyle == 5 ? uv_reflected : uv_normal);
     }
-
-    // Pacote com tamanho/posicao invalidos gerava rect com NaN ou negativo e
-    // sujava a tela com lixo; descarta em vez de desenhar.
-    if (!std::isfinite(m_TextDrawData.fX) || !std::isfinite(m_TextDrawData.fY) ||
-        !std::isfinite(m_TextDrawData.fLineWidth) || !std::isfinite(m_TextDrawData.fLineHeight) ||
-        m_TextDrawData.fLineWidth <= 0.0f || m_TextDrawData.fLineHeight <= 0.0f) {
-        return;
-    }
-
-    DrawTextureUV(texPtr, &m_rectArea,
-                  m_bHovered ? m_dwHoverColor : m_TextDrawData.dwLetterColor,
-                  m_TextDrawData.dwStyle == 5 ? uv_reflected : uv_normal);
 }
 
 void CTextDraw::SetText(const char* szText)
 {
-    if (szText == nullptr)
-        szText = "";
-
-    // O servidor reenvia o mesmo texto (inclusive "txd:textura" de sprite) em
-    // cada atualizacao. Se nada mudou, nao recarrega textura nem aloca.
-    if (strncmp(m_szText, szText, sizeof(m_szText) - 1) == 0)
-        return;
-
-    strncpy(m_szText, szText, sizeof(m_szText) - 1);
-    m_szText[sizeof(m_szText) - 1] = 0;
+    memset(m_szText, 0, 800);
+    strncpy(m_szText, szText, 800);
+    m_szText[800] = 0;
 
     if (m_TextDrawData.dwStyle == 4 && m_TextDrawData.iTextureSlot != -1)
     {
-        // DestroyTextDrawTexture devolve o slot ao pool (slotState = false).
-        // Escrever a textura nova nesse mesmo slot logo em seguida deixava o
-        // slot marcado como LIVRE: GetFreeTextDrawTextureSlot() entregava o
-        // mesmo indice para outro textdraw, o ponteiro era sobrescrito e o
-        // destrutor do primeiro liberava a textura que o segundo estava
-        // usando (sprite preto / textura corrompida). Por isso o slot e'
-        // readquirido antes de carregar.
         DestroyTextDrawTexture(m_TextDrawData.iTextureSlot);
-        m_TextDrawData.iTextureSlot = GetFreeTextDrawTextureSlot();
         LoadTexture();
     }
 }
@@ -325,10 +285,8 @@ void CTextDraw::LoadTexture()
         strncpy(txdname, m_szText, (size_t)(szTexture - m_szText));
         strcpy(texturename, ++szTexture);
 
-        // Cache compartilhado: mesma textura entre textdraws e falha memorizada
-        // (nao repete a busca nos bancos a cada atualizacao do servidor).
-        if (m_TextDrawData.iTextureSlot != -1 && txdname[0] && texturename[0])
-            TextDrawTexture[m_TextDrawData.iTextureSlot] = ::GetTextDrawTextureCached(txdname, texturename);
+        if (m_TextDrawData.iTextureSlot != -1)
+            TextDrawTexture[m_TextDrawData.iTextureSlot] = ::LoadFromTxdSlot(txdname, texturename);
     }
 }
 
@@ -340,27 +298,8 @@ void CTextDraw::SnapshotProcess()
     if (!pSnapShotHelper) return;
     if (m_TextDrawData.dwStyle != 5 || m_TextDrawData.iTextureSlot != -1) return;
 
-    // Cada tentativa carrega modelo e renderiza 256x256. Quando o preview nao
-    // pode ser gerado, espera antes de tentar de novo (antes era todo frame).
-    const uint32_t dwNow = GetTickCount();
-    if (dwNow < m_dwNextSnapshotAttempt) return;
-    const uint32_t dwRetryDelay = 1500;
-
     // Validate model ID before processing
-    if (m_TextDrawData.wModelID == 0 || m_TextDrawData.wModelID > 20000)
-    {
-        m_dwNextSnapshotAttempt = dwNow + dwRetryDelay;
-        return;
-    }
-
-    if (!std::isfinite(m_TextDrawData.fZoom) ||
-        !std::isfinite(m_TextDrawData.vecRot.x) ||
-        !std::isfinite(m_TextDrawData.vecRot.y) ||
-        !std::isfinite(m_TextDrawData.vecRot.z))
-    {
-        m_dwNextSnapshotAttempt = dwNow + dwRetryDelay;
-        return;
-    }
+    if (m_TextDrawData.wModelID == 0 || m_TextDrawData.wModelID > 20000) return;
 
     uintptr_t snapshot = 0;
 
@@ -386,7 +325,6 @@ void CTextDraw::SnapshotProcess()
     {
         if (!CModelInfo::GetModelInfo(m_TextDrawData.wModelID)) {
             Log("Invalid model ID %d for snapshot", m_TextDrawData.wModelID);
-            m_dwNextSnapshotAttempt = dwNow + dwRetryDelay;
             return;
         }
         snapshot = (uintptr_t)pSnapShotHelper->CreateObjectSnapShot(
@@ -400,11 +338,6 @@ void CTextDraw::SnapshotProcess()
         m_TextDrawData.iTextureSlot = GetFreeTextDrawTextureSlot();
         if (m_TextDrawData.iTextureSlot != -1) {
             TextDrawTexture[m_TextDrawData.iTextureSlot] = snapshot;
-            return;
         }
-        // Sem slot livre: descarta o raster para nao vazar memoria.
-        RwTextureDestroy(reinterpret_cast<RwTexture*>(snapshot));
     }
-
-    m_dwNextSnapshotAttempt = dwNow + dwRetryDelay;
 }
