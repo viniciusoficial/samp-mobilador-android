@@ -119,8 +119,6 @@ CPlayerPed::CPlayerPed(int iNum, int iSkin, float fX, float fY, float fZ, float 
 
 CPlayerPed::~CPlayerPed()
 {
-    LOGD("destroy ped %d", m_bytePlayerNumber);
-
     // Bounds check: snapshot peds (ex: slot 208) are above PLAYER_PED_SLOTS and
     // must never touch RemotePlayerKeys[]/dwPlayerPedPtrs[].
     if (m_bytePlayerNumber < PLAYER_PED_SLOTS)
@@ -1137,15 +1135,11 @@ CPlayerPed* g_pCurrentFiredPed = nullptr;
 BULLET_DATA* g_pCurrentBulletData = nullptr;
 void CPlayerPed::FireInstant()
 {
-    LOGI("CPlayerPed::FireInstant");
-    LOGI("CPlayerPed::FireInstant1");
     if (!IsValidGamePed(m_pPed) || !GamePool_Ped_GetAt(m_dwGTAId)) {
         return;
     }
-    LOGI("CPlayerPed::FireInstant2");
     uint8_t byteSavedCameraMode = 0;
     uint16_t wSavedCameraMode2 = 0;
-    LOGI("CPlayerPed::FireInstan3");
     if (m_bytePlayerNumber != 0)
     {
         byteSavedCameraMode = *pbyteCameraMode;
@@ -1163,19 +1157,15 @@ void CPlayerPed::FireInstant()
         //GameStoreLocalPlayerSkills();
         //GameSetRemotePlayerSkills(m_bytePlayerNumber);
     }
-    LOGI("CPlayerPed::FireInstan4");
     g_pCurrentFiredPed = this;
 
     if (m_bHaveBulletData)
         g_pCurrentBulletData = &m_bulletData;
     else
         g_pCurrentBulletData = nullptr;
-    LOGI("CPlayerPed::FireInstan5");
     CVector vecBonePos, vecOut;
-    LOGI("CPlayerPed::FireInstan6");
     if (GetCurrentWeapon() == WEAPON_SNIPERRIFLE)
     {
-        LOGI("CPlayerPed::FireInstan99");
         if(m_pPed)
             CWeapon__FireSniper(GetCurrentWeaponSlot(), m_pPed, nullptr, nullptr);
         else
@@ -1183,25 +1173,19 @@ void CPlayerPed::FireInstant()
     }
     else
     {
-        LOGI("CPlayerPed::FireInstan88");
         GetWeaponInfoForFire(0, &vecBonePos, &vecOut);
-        LOGI("CPlayerPed::FireInstan89");
         CWeapon* pSlot = GetCurrentWeaponSlot();
-        LOGI("CPlayerPed::FireInstan90");
         if(m_pPed) {
-            LOGI("CPlayerPed::FireInstan91");
 
             ((void (*)(CWeapon*, CPedGTA*, CVector*, CVector*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t))(g_libGTASA + 0x6FA408))(
                     pSlot, m_pPed, &vecBonePos, &vecOut, 0, 0, 0, 0, 1);
 
         }else {
-            LOGI("CPlayerPed::FireInstan92");
             CWeapon__FireInstantHit(nullptr, nullptr, &vecBonePos, &vecOut, nullptr, nullptr,
                                     nullptr, 0, 1);
 
         }
     }
-    LOGI("CPlayerPed::FireInstan7");
     g_pCurrentFiredPed = nullptr;
 
     if (m_bytePlayerNumber != 0)
@@ -1212,7 +1196,6 @@ void CPlayerPed::FireInstant()
         GameSetLocalPlayerAim();
         //GameSetLocalPlayerSkills();
     }
-    LOGI("CPlayerPed::FireInstan8");
 }
 // 0.3.7
 void CPlayerPed::GetWeaponInfoForFire(bool bLeftWrist, CVector* vecBonePos, CVector* vecOut)

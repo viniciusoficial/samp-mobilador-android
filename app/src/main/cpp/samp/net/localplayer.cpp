@@ -685,6 +685,8 @@ void CLocalPlayer::HandleClassSelection()
 // 0.3.7
 void CLocalPlayer::SendWastedNotification()
 {
+	if (!m_pPlayerPed) return;
+
 	uint8_t byteDeathReason;
 	PLAYERID WhoWasResponsible = INVALID_PLAYER_ID;
 	RakNet::BitStream bsPlayerDeath;

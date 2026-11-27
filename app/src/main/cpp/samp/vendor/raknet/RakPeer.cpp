@@ -977,6 +977,15 @@ Packet* RakPeer::ReceiveIgnoreRPC( void )
 		rakPeerMutexes[packetPool_Mutex].Unlock();
 #endif
 
+		// Pacote sem buffer/tamanho: nunca desreferenciar packet->data as cegas
+		// (era NULL deref / leitura de ponteiro invalido).
+		if ( packet == 0 || packet->data == 0 || packet->length == 0 )
+		{
+			DeallocatePacket( packet );
+			packet = 0;
+			continue;
+		}
+
 		if ( ( packet->length >= sizeof(unsigned char) + sizeof( RakNetTime ) ) &&
 			( (unsigned char) packet->data[ 0 ] == ID_TIMESTAMP ) )
 		{
@@ -1027,7 +1036,7 @@ void RakPeer::DeallocatePacket( Packet *packet )
 		return;
 
 	if (packet->deleteData)
-		delete packet->data;
+		delete [] packet->data; // buffers vem de new unsigned char[] (delete escalar corrompia a heap)
 	free(packet);
 }
 

@@ -25,17 +25,38 @@ void CPlayerTags::Render(ImGuiRenderer* renderer)
 	char szNickBuf[64];
 
 	if (!renderer) return;
-	if (!pNetGame || !pNetGame->m_pNetSet) return;
-	if (!pNetGame->m_pNetSet->bShowNameTags) return;
+
+	// Diagnostico: 1 linha a cada 3s dizendo exatamente onde as nametags param.
+	static int s_iFrame = 0;
+	const bool bDiag = (++s_iFrame >= 180);
+	if (bDiag) s_iFrame = 0;
+	if (!pNetGame || !pNetGame->m_pNetSet)
+	{
+		if (bDiag) LOGD("nametags: sem pNetGame/m_pNetSet");
+		return;
+	}
+	if (!pNetGame->m_pNetSet->bShowNameTags)
+	{
+		if (bDiag) LOGD("nametags: desligado pelo servidor (bShowNameTags=0)");
+		return;
+	}
 	if (!pGame) return;
 
 	// Nada aqui pode desreferenciar ponteiro nulo: este metodo roda todo frame,
 	// inclusive durante o spawn/remocao de jogadores.
 	CPlayerPed* pLocalPed = pGame->FindPlayerPed();
-	if (!pLocalPed || !pLocalPed->m_pPed) return;
+	if (!pLocalPed || !pLocalPed->m_pPed)
+	{
+		if (bDiag) LOGD("nametags: ped local nulo");
+		return;
+	}
 
 	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
-	if (!pPlayerPool) return;
+	if (!pPlayerPool)
+	{
+		if (bDiag) LOGD("nametags: player pool nulo");
+		return;
+	}
 
 	static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0x9F86F8);
 
@@ -80,6 +101,15 @@ void CPlayerTags::Render(ImGuiRenderer* renderer)
 		vecPos.z = 0.0f;
 		pPlayerPed->GetBonePosition(8, &vecPos);
 
+		// Se o bone nao foi escrito (ped sem skeleton carregado / bone 8 invalido
+		// nesta build) a projecao caia em (0,0,0) - origem do mapa - e a nametag
+		// ficava invisivel. Nesse caso usa a posicao do ped.
+		if (vecPos.x == 0.0f && vecPos.y == 0.0f && vecPos.z == 0.0f)
+		{
+			vecPos = pPlayerPed->m_pPed->GetPosition();
+			vecPos.z += 0.9f;
+		}
+
 		dwHitEntity = 0;
 		if (bLOS)
 		{
@@ -108,15 +138,10 @@ void CPlayerTags::Render(ImGuiRenderer* renderer)
 
 	// Diagnostico curto (1x a cada ~3s): diz exatamente qual filtro esta matando
 	// as nametags. Sem isso o log nao mostra nada e o problema fica invisivel.
-	static int s_iDiagFrame = 0;
-	if (++s_iDiagFrame >= 180)
+	if (bDiag)
 	{
-		s_iDiagFrame = 0;
-		if (iActive > 0 && iDrawn == 0)
-		{
-			LOGD("nametags: active=%d drawn=0 ped=%d dist=%d added=%d los=%d (losEnabled=%d drawDist=%.1f)",
-				 iActive, iSkipPed, iSkipDistance, iSkipAdded, iSkipLOS, bLOS ? 1 : 0, fDrawDistance);
-		}
+		LOGD("nametags: active=%d drawn=%d ped=%d dist=%d added=%d los=%d (losEnabled=%d show=1 drawDist=%.1f)",
+			 iActive, iDrawn, iSkipPed, iSkipDistance, iSkipAdded, iSkipLOS, bLOS ? 1 : 0, fDrawDistance);
 	}
 }
 
@@ -135,7 +160,28 @@ void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick
 	CVector vecOut = { 0.0f, 0.0f, 0.0f };
 	((void (*)(CVector*, CVector*, float*, float*, bool, bool))(g_libGTASA + 0x5F449C))(&vecTagPos, &vecOut, 0, 0, 0, 0);
 
-	if (vecOut.z < 1.0f) return;
+	if (vecOut.z < 1.0f)
+	{
+		static bool s_bProjLogged = false;
+		if (!s_bProjLogged)
+		{
+			s_bProjLogged = true;
+			LOGD("nametag proj fora da tela: in=(%.1f %.1f %.1f) out=(%.1f %.1f %.1f)",
+				 vecTagPos.x, vecTagPos.y, vecTagPos.z, vecOut.x, vecOut.y, vecOut.z);
+		}
+		return;
+	}
+
+	{
+		static bool s_bDrawLogged = false;
+		if (!s_bDrawLogged)
+		{
+			s_bDrawLogged = true;
+			LOGD("nametag ok: screen=(%.0f %.0f) z=%.2f font=%.1f disp=(%.0f %.0f)",
+				 vecOut.x, vecOut.y, vecOut.z, UISettings::fontSize() / 2,
+				 ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y);
+		}
+	}
 
 	ImVec2 pos = ImVec2(vecOut.x, vecOut.y);
 	pos.x -= renderer->calculateTextSize(szNick, UISettings::fontSize() / 2).x / 2;

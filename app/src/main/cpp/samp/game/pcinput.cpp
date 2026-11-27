@@ -393,7 +393,7 @@ void PcInputSetMouseButton(int button, int action, bool pressed)
     if (!pressed && IsActionIndexValid(prevAction))
         resolvedAction = prevAction;
 
-    const bool changed = g_mouseButtonPressed[button].exchange(pressed) != pressed;
+    g_mouseButtonPressed[button].exchange(pressed);
     g_mouseButtonAction[button].store(pressed ? resolvedAction : -1);
 
     if (IsActionIndexValid(resolvedAction))
@@ -406,8 +406,6 @@ void PcInputSetMouseButton(int button, int action, bool pressed)
             mask |= static_cast<uint8_t>(1u << (b - 1));
     }
     NativeCameraMouseSetButtons(mask);
-    if (changed)
-        Log("[GAME-MOUSE] button=%d action=%d pressed=%d", button, resolvedAction, pressed);
 }
 
 void PcInputReleaseMouseButtons()
