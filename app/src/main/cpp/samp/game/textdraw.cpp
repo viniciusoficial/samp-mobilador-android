@@ -297,7 +297,15 @@ void CTextDraw::SetText(const char* szText)
 
     if (m_TextDrawData.dwStyle == 4 && m_TextDrawData.iTextureSlot != -1)
     {
+        // DestroyTextDrawTexture devolve o slot ao pool (slotState = false).
+        // Escrever a textura nova nesse mesmo slot logo em seguida deixava o
+        // slot marcado como LIVRE: GetFreeTextDrawTextureSlot() entregava o
+        // mesmo indice para outro textdraw, o ponteiro era sobrescrito e o
+        // destrutor do primeiro liberava a textura que o segundo estava
+        // usando (sprite preto / textura corrompida). Por isso o slot e'
+        // readquirido antes de carregar.
         DestroyTextDrawTexture(m_TextDrawData.iTextureSlot);
+        m_TextDrawData.iTextureSlot = GetFreeTextDrawTextureSlot();
         LoadTexture();
     }
 }

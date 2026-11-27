@@ -686,7 +686,9 @@ int64 CWeapon__FireInstantHit_hook(CWeapon* thiz, CPedGTA* pFiringEntity, CVecto
                                    CVector* target, CVector* originForDriveBy, bool arg6, bool muzzle)
 {
 
-    if (pNetGame && pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->m_pPed)		// CWeapon::Fire
+    CPlayerPed* pLocalFirePed = (pNetGame && pNetGame->GetPlayerPool() && pNetGame->GetPlayerPool()->GetLocalPlayer())
+                                ? pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed() : nullptr;
+    if (pLocalFirePed && pLocalFirePed->m_pPed)		// CWeapon::Fire
     {
         if(pFiringEntity != GamePool_FindPlayerPed())
             return muzzle;
@@ -722,8 +724,10 @@ uint32_t CWeapon__ProcessLineOfSight_hook(CVector *vecOrigin, CVector *vecEnd, C
     uintptr_t dwRetAddr = 0;
     GET_LR(dwRetAddr);
 
-    Log("dwRetAddr CWeapon__ProcessLineOfSight_hook 0x%llx", dwRetAddr);
-
+    // NAO logar aqui. Este hook roda em TODO teste de linha de visada do jogo
+    // (tiro, IA, camera) e Log() faz fseek+ftell+fprintf+fflush em arquivo sob
+    // mutex: era o maior gargalo de FPS do cliente. O endereco de retorno so
+    // e' usado na comparacao abaixo, nao precisa ser impresso.
     if(dwRetAddr >= 0x6FA408 && dwRetAddr <= 0x6FAE44)
         g_bForceWorldProcessLineOfSight = true;
 
@@ -901,7 +905,8 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
                                               calculator->m_fDamageFactor,
                                               calculator->m_weaponType,
                                               calculator->m_pedPieceType);
-            if (pPlayerPool->GetAt(PlayerID)->IsNPC())
+            CRemotePlayer* pDamagedPlayer = pPlayerPool->GetAt(PlayerID);
+            if (pDamagedPlayer && pDamagedPlayer->IsNPC())
                 return true;
         }
         else
@@ -924,6 +929,7 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
     uint8_t byteTeam = pPlayerPool->GetLocalPlayer()->m_byteTeam;
     if (byteTeam == NO_TEAM ||
         PlayerID == INVALID_PLAYER_ID ||
+        !pPlayerPool->GetAt(PlayerID) ||
         pPlayerPool->GetAt(PlayerID)->m_byteTeam != byteTeam) {
         return false;
     }

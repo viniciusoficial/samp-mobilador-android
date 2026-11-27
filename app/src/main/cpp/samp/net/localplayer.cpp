@@ -1842,7 +1842,13 @@ void CLocalPlayer::SendBulletSyncData(PLAYERID byteHitID, uint8_t byteHitType, C
 
     if (byteHitType == BULLET_HIT_TYPE_PLAYER)
     {
-        float fDistance = pNetGame->GetPlayerPool()->GetAt((PLAYERID)byteHitID)->GetPlayerPed()->m_pPed->GetDistanceFromLocalPlayerPed();
+        // GetSlotState garante o CRemotePlayer, mas nao garante o ped: atirar em
+        // um jogador que ainda esta spawando derrubava o jogo aqui.
+        float fDistance = 100.0f;
+        CRemotePlayer* pHitPlayer = pNetGame->GetPlayerPool()->GetAt((PLAYERID)byteHitID);
+        CPlayerPed* pHitPed = pHitPlayer ? pHitPlayer->GetPlayerPed() : nullptr;
+        if (pHitPed && pHitPed->m_pPed)
+            fDistance = pHitPed->m_pPed->GetDistanceFromLocalPlayerPed();
         if (byteCurrWeapon != 0 && fDistance < 1.0f)
             byteShotWeapon = 0;
         else
@@ -1862,8 +1868,16 @@ void CLocalPlayer::SendBulletSyncData(PLAYERID byteHitID, uint8_t byteHitType, C
     blSync.offsets[1] = 0.0f;
     blSync.offsets[2] = 0.0f;
 
-	Log("SendBulletSync: %d, %d, %d, %f, %f, %f, %f, %f, %f", blSync.hitId, blSync.hitType, blSync.weapId,
-		 blSync.hitPos[0], blSync.hitPos[1], blSync.hitPos[2], blSync.offsets[0], blSync.offsets[1], blSync.offsets[2]);
+	// Log() escreve e faz fflush no arquivo a cada chamada. Isto roda a cada
+	// tiro: em PVP isso vira engasgo. Mantem as primeiras amostras para
+	// diagnostico e para de logar depois.
+	static int s_iBulletSyncLogs = 0;
+	if (s_iBulletSyncLogs < 32)
+	{
+		++s_iBulletSyncLogs;
+		Log("SendBulletSync: %d, %d, %d, %f, %f, %f, %f, %f, %f", blSync.hitId, blSync.hitType, blSync.weapId,
+			blSync.hitPos[0], blSync.hitPos[1], blSync.hitPos[2], blSync.offsets[0], blSync.offsets[1], blSync.offsets[2]);
+	}
 
     RakNet::BitStream bsBulletSync;
     bsBulletSync.Write((uint8_t)ID_BULLET_SYNC);

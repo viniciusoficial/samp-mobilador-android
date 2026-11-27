@@ -129,6 +129,9 @@ void CPlayerBubblePool::Delete(PLAYERID playerId)
     if(m_bSlotState[playerId] && m_pPlayerBubble[playerId])
     {
         delete m_pPlayerBubble[playerId];
+        // Sem zerar o ponteiro o slot ficava dangling; o proximo New/Delete
+        // mexia em memoria ja liberada.
+        m_pPlayerBubble[playerId] = 0;
         m_bSlotState[playerId] = false;
     }
 }

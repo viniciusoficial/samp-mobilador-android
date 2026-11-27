@@ -1483,10 +1483,22 @@ void SetPlayerSkillLevel(RPCParameters *rpcParams)
 	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
 	if(pPlayerPool)
 	{
+		// GetPlayerPed() e' nulo enquanto o ped nao existe (jogador entrando /
+		// saindo); o RPC de skill chegava antes do spawn e derrubava o jogo.
+		CPlayerPed* pSkillPed = nullptr;
 		if(playerId == pPlayerPool->GetLocalPlayerID())
-			pPlayerPool->GetLocalPlayer()->GetPlayerPed()->SetWeaponSkill(ucSkillType, uiSkillLevel);
+		{
+			CLocalPlayer* pLocal = pPlayerPool->GetLocalPlayer();
+			if(pLocal) pSkillPed = pLocal->GetPlayerPed();
+		}
 		else if(pPlayerPool->GetSlotState(playerId))
-			pPlayerPool->GetAt(playerId)->GetPlayerPed()->SetWeaponSkill(ucSkillType, uiSkillLevel);;
+		{
+			CRemotePlayer* pRemote = pPlayerPool->GetAt(playerId);
+			if(pRemote) pSkillPed = pRemote->GetPlayerPed();
+		}
+
+		if(pSkillPed)
+			pSkillPed->SetWeaponSkill(ucSkillType, uiSkillLevel);
 	}
 }
 

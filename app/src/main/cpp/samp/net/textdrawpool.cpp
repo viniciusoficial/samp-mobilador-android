@@ -83,15 +83,22 @@ void CTextDrawPool::SetSelectState(bool bState, uint32_t dwColor)
         m_bSelectState = true;
         m_dwHoverColor = (((dwColor << 16) | dwColor & 0xFF00) << 8) | (((dwColor >> 16) | dwColor & 0xFF0000) >> 8);
         m_wClickedTextDrawID = 0xFFFF;
-        pGame->DisplayHUD(false);
-        pGame->FindPlayerPed()->TogglePlayerControllable(false);
+        if (pGame) {
+            pGame->DisplayHUD(false);
+            // FindPlayerPed fica nulo durante o spawn/entre conexoes.
+            CPlayerPed* pPed = pGame->FindPlayerPed();
+            if (pPed) pPed->TogglePlayerControllable(false);
+        }
     }
     else {
         m_bSelectState = false;
         m_dwHoverColor = 0;
         m_wClickedTextDrawID = 0xFFFF;
-        pGame->DisplayHUD(true);
-        pGame->FindPlayerPed()->TogglePlayerControllable(true);
+        if (pGame) {
+            pGame->DisplayHUD(true);
+            CPlayerPed* pPed = pGame->FindPlayerPed();
+            if (pPed) pPed->TogglePlayerControllable(true);
+        }
 
         SendClick();
 
@@ -108,6 +115,12 @@ void CTextDrawPool::SetSelectState(bool bState, uint32_t dwColor)
 
 void CTextDrawPool::SendClick()
 {
+    // 0xFFFF = nenhum textdraw clicado. SetSelectState(false) chamava SendClick
+    // sempre e o servidor recebia um click em textdraw inexistente (podia
+    // reabrir dialogo/menu que o jogador tinha acabado de fechar).
+    if (m_wClickedTextDrawID == 0xFFFF) return;
+    if (!pNetGame || !pNetGame->GetRakClient()) return;
+
     RakNet::BitStream bsClick;
     bsClick.Write(m_wClickedTextDrawID);
     pNetGame->GetRakClient()->RPC(&RPC_ClickTextDraw, &bsClick, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);

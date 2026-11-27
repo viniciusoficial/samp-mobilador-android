@@ -6,11 +6,23 @@ public:
 	CPlayerPool();
 	~CPlayerPool();
 
-	void SetPlayerName(PLAYERID playerId, char* szName) { strcpy(m_szPlayerNames[playerId], szName); }
-	char* GetPlayerName(PLAYERID playerId){ return m_szPlayerNames[playerId]; }
+	// Nome vem do servidor: sem o limite, um nome maior que MAX_PLAYER_NAME
+	// escrevia no nome do jogador seguinte (corrompia o pool inteiro).
+	void SetPlayerName(PLAYERID playerId, const char* szName) {
+		if (playerId >= MAX_PLAYERS || !szName) return;
+		strncpy(m_szPlayerNames[playerId], szName, MAX_PLAYER_NAME);
+		m_szPlayerNames[playerId][MAX_PLAYER_NAME] = '\0';
+	}
+	char* GetPlayerName(PLAYERID playerId) {
+		static char szEmptyName[MAX_PLAYER_NAME + 1] = { 0 };
+		if (playerId >= MAX_PLAYERS) return szEmptyName;
+		return m_szPlayerNames[playerId];
+	}
 
 	void SetLocalPlayerName(const char* szPlayerName) {
-		strcpy(m_szLocalPlayerName, szPlayerName);
+		if (!szPlayerName) return;
+		strncpy(m_szLocalPlayerName, szPlayerName, MAX_PLAYER_NAME);
+		m_szLocalPlayerName[MAX_PLAYER_NAME] = '\0';
 	}
 	
 	char* GetLocalPlayerName() {

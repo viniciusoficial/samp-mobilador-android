@@ -5,8 +5,15 @@
 
 CPlayerPool::CPlayerPool()
 {
+	// Ponteiros e tabelas por jogador comecam zerados: qualquer leitura antes
+	// do primeiro WorldPlayerAdd (score/ping/collision) lia lixo da heap.
 	for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++) {
+		m_pPlayers[playerId] = nullptr;
 		m_bPlayerSlotState[playerId] = false;
+		m_bCollisionChecking[playerId] = false;
+		m_iPlayerScores[playerId] = 0;
+		m_dwPlayerPings[playerId] = 0;
+		m_szPlayerNames[playerId][0] = '\0';
 	}
 
 	m_pLocalPlayer = new CLocalPlayer();
@@ -144,7 +151,8 @@ bool CPlayerPool::IsPlayerNPC(PLAYERID playerId)
 		return false;
 	}
 
-	return m_pPlayers[playerId]->IsNPC();
+	CRemotePlayer* pRemotePlayer = GetAt(playerId);
+	return pRemotePlayer ? pRemotePlayer->IsNPC() : false;
 }
 
 int CPlayerPool::GetTotalPlayers()
@@ -267,7 +275,8 @@ void CPlayerPool::ApplyCollisionChecking()
         if (pRemotePlayer)
         {
             pPlayerPed = pRemotePlayer->GetPlayerPed();
-            if (pPlayerPed)
+            // m_pPed nulo = ped ainda sem entidade GTA (spawn em andamento).
+            if (pPlayerPed && pPlayerPed->m_pPed)
             {
                 if (!pPlayerPed->IsInVehicle())
                 {
@@ -290,13 +299,10 @@ void CPlayerPool::ResetCollisionChecking()
 		if (pRemotePlayer)
 		{
 			pPlayerPed = pRemotePlayer->GetPlayerPed();
-			if (pPlayerPed)
+			if (pPlayerPed && pPlayerPed->m_pPed)
 			{
 				if (!pPlayerPed->IsInVehicle())
-				{
-					if(!pPlayerPed->IsInVehicle())
-						pPlayerPed->m_pPed->SetCollisionChecking(m_bCollisionChecking[playerId]);
-				}
+					pPlayerPed->m_pPed->SetCollisionChecking(m_bCollisionChecking[playerId]);
 			}
 		}
 	}

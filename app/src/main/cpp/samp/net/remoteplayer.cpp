@@ -775,7 +775,9 @@ void CRemotePlayer::StoreBulletFullSyncData(BULLET_SYNC_DATA* btSync)
 			{
 				if (btSync->PlayerID == pPlayerPool->GetLocalPlayerID())
 				{
-					pEntity = reinterpret_cast<CEntityGTA *>(&pGame->FindPlayerPed()->m_pPed);
+					CPlayerPed* pLocalPed = pGame ? pGame->FindPlayerPed() : nullptr;
+					if (pLocalPed && pLocalPed->m_pPed)
+						pEntity = reinterpret_cast<CEntityGTA *>(&pLocalPed->m_pPed);
 				}
 				else if (btSync->PlayerID == m_PlayerID)
 				{
