@@ -616,12 +616,11 @@ bool CLocalPlayer::Spawn()
 	pGame->DisplayHUD(true);
 	m_pPlayerPed->TogglePlayerControllable(true);
 
-	if (!bFirstSpawn) {
-		m_pPlayerPed->SetInitialState();
-	}
-	else {
-		bFirstSpawn = false;
-	}
+	// Sempre reseta o estado inicial. No primeiro spawn esse reset era pulado e
+	// a animacao da tela de selecao de classe (danca mandada pelo servidor)
+	// continuava tocando depois de entrar no mundo.
+	m_pPlayerPed->SetInitialState();
+	bFirstSpawn = false;
 
 	pGame->RefreshStreamingAt(m_SpawnInfo.vecPos.x, m_SpawnInfo.vecPos.y);
 
@@ -633,6 +632,9 @@ bool CLocalPlayer::Spawn()
 	m_pPlayerPed->SetModelIndex(m_SpawnInfo.iSkin);
 	m_pPlayerPed->ClearWeapons();
 	m_pPlayerPed->ResetDamageEntity();
+	// Descarta tarefas/animacoes herdadas da tela de spawn para comecar no idle
+	// padrao. Animacoes que o servidor mandar depois deste ponto continuam valendo.
+	m_pPlayerPed->ClearAllTasks();
 
 	//ApplySpecialAction(0);
 

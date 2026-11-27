@@ -36,12 +36,10 @@ RwTexture* CUtil::LoadTextureFromDB(const char* dbname, const char* texture)
     TextureDatabaseRuntime::Register(db_handle);
 
     auto tex = CUtil::GetTexture(texture);
-    if(!tex)
-    {
-        Log("Error: Texture (%s) not found in database (%s)", dbname, texture);
-        return nullptr;
-    }
 
+    // Sempre desregistrar. Antes, quando a textura nao existia, o banco ficava
+    // registrado e as buscas seguintes podiam resolver contra o banco errado.
+    // O aviso de textura ausente ja sai em CUtil::GetTexture (um por textura).
     TextureDatabaseRuntime::Unregister(db_handle);
 
     return tex;

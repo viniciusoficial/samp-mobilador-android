@@ -111,5 +111,8 @@ public:
     CRect m_rectArea;
     bool m_bHovered;
     uint32_t m_dwHoverColor;
+    // Proxima tentativa de gerar o preview (estilo 5). Evita tentar recriar o
+    // snapshot a cada frame quando o modelo ainda nao esta disponivel.
+    uint32_t m_dwNextSnapshotAttempt;
 };
 #pragma pack(pop)

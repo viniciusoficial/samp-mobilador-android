@@ -758,6 +758,13 @@ static void CPlayerPed__ProcessWeaponSwitch_hook(uintptr_t thiz, uintptr_t pad)
             }
         }
     }
+    else if (ped != nullptr && ped == GamePool_FindPlayerPed())
+    {
+        // A troca direta so roda a pe e sem zoom de sniper. Aqui os pedidos
+        // eram acumulados para depois; descarta para nao trocar varias armas
+        // seguidas quando o jogador volta ao estado normal.
+        PcInputDropWeaponWheel();
+    }
 #endif
     CPlayerPed__ProcessWeaponSwitch(thiz, pad);
 }

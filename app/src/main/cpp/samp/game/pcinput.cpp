@@ -287,10 +287,13 @@ void PcInputSetAction(int action, bool pressed)
 
     if (pressed && !wasPressed && !g_nativeInterfaceActive.load())
     {
+        // Um toque = uma troca. Antes a fila guardava ate 8 passos: quando a
+        // troca nao podia ser aplicada (veiculo/zoom de sniper) os pedidos se
+        // acumulavam e, ao voltar, a arma trocava varias vezes sozinha.
         if (action == static_cast<int>(PcInputAction::WEAPON_NEXT))
-            g_weaponWheelSteps.store(std::clamp(g_weaponWheelSteps.load() + 1, -8, 8));
+            g_weaponWheelSteps.store(std::clamp(g_weaponWheelSteps.load() + 1, -1, 1));
         else if (action == static_cast<int>(PcInputAction::WEAPON_PREVIOUS))
-            g_weaponWheelSteps.store(std::clamp(g_weaponWheelSteps.load() - 1, -8, 8));
+            g_weaponWheelSteps.store(std::clamp(g_weaponWheelSteps.load() - 1, -1, 1));
     }
 
     if (action == static_cast<int>(PcInputAction::TAB) && wasPressed != pressed && pUI)
@@ -328,6 +331,11 @@ int PcInputConsumeWeaponWheel(int direction)
 int PcInputConsumeWeaponSlot()
 {
     return g_pendingWeaponSlot.exchange(-1, std::memory_order_acq_rel);
+}
+
+void PcInputDropWeaponWheel()
+{
+    g_weaponWheelSteps.store(0, std::memory_order_release);
 }
 
 void PcInputSelectWeaponSlot(int slot)
@@ -677,7 +685,7 @@ extern "C"
             return;
 
         const int step = (direction > 0 ? 1 : -1);
-        g_weaponWheelSteps.store(std::clamp(g_weaponWheelSteps.load() + step, -8, 8));
+        g_weaponWheelSteps.store(std::clamp(g_weaponWheelSteps.load() + step, -2, 2));
         NativeCameraMouseEnqueueWheel(step);
     }
 

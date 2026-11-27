@@ -81,6 +81,7 @@ bool PcInputConsumeDriverVehicleEntry();
 bool PcInputConsumePassengerVehicleEntry();
 int PcInputConsumeWeaponWheel(int direction);
 int PcInputPeekWeaponWheel();
+void PcInputDropWeaponWheel();
 int PcInputConsumeWeaponSlot();
 void PcInputSelectWeaponSlot(int slot);
 

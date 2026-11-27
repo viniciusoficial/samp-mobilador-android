@@ -603,7 +603,7 @@ void ScrApplyPlayerAnimation(RPCParameters* rpcParams)
 		}
 
 		if (pPlayerPed) {
-			Log("ApplyAnimation: %s:%s", szAnimLib, szAnimName);
+			Log("ApplyAnimation: player %d %s:%s", PlayerID, szAnimLib, szAnimName);
 			pPlayerPed->ApplyAnimation(szAnimName, szAnimLib, fDelta, bLoop, bLockX, bLockY, bFreeze, dwTime);
 		}
 	}
@@ -611,38 +611,38 @@ void ScrApplyPlayerAnimation(RPCParameters* rpcParams)
 // 0.3.7
 void ScrClearPlayerAnimations(RPCParameters* rpcParams)
 {
-	return;
-
 	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
 	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!pNetGame) return;
+
 	RakNet::BitStream bsData((unsigned char*)Data, (iBitLength / 8) + 1, false);
 
-	Log("ClearAnimation");
-
 	PLAYERID playerId;
-	bsData.Read(playerId);
-	RwMatrix mat;
+	if (!bsData.Read(playerId)) return;
 
-	CPlayerPool * pPlayerPool = NULL;
-	CPlayerPed * pPlayerPed = NULL;
+	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+	if (!pPlayerPool) return;
 
-	pPlayerPool = pNetGame->GetPlayerPool();
+	CPlayerPed* pPlayerPed = nullptr;
 
-	if (pPlayerPool)
-	{
-		if (playerId == pPlayerPool->GetLocalPlayerID()) {
-			pPlayerPed = pPlayerPool->GetLocalPlayer()->GetPlayerPed();
+	if (playerId == pPlayerPool->GetLocalPlayerID()) {
+		CLocalPlayer* pLocalPlayer = pPlayerPool->GetLocalPlayer();
+		if (pLocalPlayer) pPlayerPed = pLocalPlayer->GetPlayerPed();
+	}
+	else if (pPlayerPool->GetSlotState(playerId)) {
+		CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(playerId);
+		if (pRemotePlayer) {
+			pPlayerPed = pRemotePlayer->GetPlayerPed();
+			pRemotePlayer->m_bAppliedAnimation = false;
 		}
-		else {
-			if (pPlayerPool->GetSlotState(playerId)) {
-				pPlayerPed = pPlayerPool->GetAt(playerId)->GetPlayerPed();
-				pPlayerPool->GetAt(playerId)->m_bAppliedAnimation = false;
-			}
-		}
-		if (pPlayerPed) {
-			mat = pPlayerPed->m_pPed->GetMatrix().ToRwMatrix();
-			pPlayerPed->m_pPed->SetPosn(mat.pos.x, mat.pos.y, mat.pos.z);
-		}
+	}
+
+	if (pPlayerPed) {
+		// Antes a funcao retornava na primeira linha: o servidor pedia para
+		// limpar a animacao e o personagem continuava preso na anterior (a danca
+		// aplicada na tela de selecao seguia para dentro do mundo).
+		Log("ClearAnimation: player %d", playerId);
+		pPlayerPed->ClearAllTasks();
 	}
 }
 // 0.3.7
