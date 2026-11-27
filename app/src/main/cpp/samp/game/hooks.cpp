@@ -467,25 +467,21 @@ void CObject_Render_hook(CObjectGta* thiz)
     if(pNetGame)
     {
         CObject *pObject = pNetGame->GetObjectPool()->FindObjectFromGtaPtr(object);
-        if(pObject && pObject->m_pEntity)
-        {
-            RwObject* rwObject = (RwObject*)pObject->m_pEntity->m_pRwObject;
-            if(rwObject)
-            {
-                // SetObjectMaterial
-                if(pObject->m_bHasMaterial || pObject->m_bHasMaterialText)
-                {
-                    RwFrameForAllObjects((RwFrame*)rwObject->parent, (RwObject *(*)(RwObject *, void *))ObjectMaterialCallBack, pObject);
-                    //RpAtomic* atomic = (RpAtomic*)object->m_pRwAtomic;
-                    //RpGeometryForAllMaterials(atomic->geometry, ObjectMaterialCallBack, (void*)pObject);
-                }
-                // SetObjectMaterialText
-                if(pObject->m_bHasMaterialText)
-                {
-                    RwFrameForAllObjects((RwFrame*)rwObject->parent, (RwObject *(*)(RwObject *, void *))ObjectMaterialTextCallBack, pObject);
-                    //RpAtomic* atomic = (RpAtomic*)object->m_pRwAtomic;
-                    //RpGeometryForAllMaterials(atomic->geometry, ObjectMaterialTextCallBack, (void*)pObject);
-                }
+		if(pObject && pObject->m_pEntity)
+		{
+			RpAtomic* atomic = pObject->m_pEntity->m_pRwAtomic;
+			if(atomic)
+			{
+				// SetObjectMaterial
+				if(pObject->m_bHasMaterial || pObject->m_bHasMaterialText)
+				{
+					ObjectMaterialCallBack(atomic, pObject);
+				}
+				// SetObjectMaterialText
+				if(pObject->m_bHasMaterialText)
+				{
+					ObjectMaterialTextCallBack(atomic, pObject);
+				}
             }
 
 

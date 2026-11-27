@@ -515,82 +515,74 @@ void ScrDestroyObject(RPCParameters *rpcParams)
 
 void ScrSetObjectMaterial(RPCParameters* rpcParams)
 {
-	/*
-	unsigned char* Data = reinterpret_cast<unsigned char*>(rpcParams->input);
-	int iBitLength = rpcParams->numberOfBitsOfData;
+	if (!rpcParams || !rpcParams->input || !pNetGame)
+		return;
 
-	CObjectPool* pObjectPool = pNetGame->GetObjectPool();
-	OBJECTID ObjectID;
-	uint8_t byteMaterialType;
-	uint8_t byteMaterialIndex;
-	uint16_t wModelID;
-	uint8_t byteLength;
-	char txdname[256], texname[256], fontname[256];
-	uint32_t dwColor;
-	uint8_t byteMaterialSize;
-	uint8_t byteFontSize;
-	uint8_t byteBold;
-	uint32_t dwFontColor;
-	uint32_t dwBackColor;
-	uint8_t byteTextAlignment;
-	char text[2048];
+	const int bitLength = rpcParams->numberOfBitsOfData;
+	if (bitLength <= 0)
+		return;
 
-	RakNet::BitStream bsData(Data, (iBitLength / 8) + 1, false);
-	bsData.Read(ObjectID);
+	RakNet::BitStream bsData(reinterpret_cast<unsigned char*>(rpcParams->input),
+		(bitLength / 8) + 1, false);
+	OBJECTID objectId = INVALID_OBJECT_ID;
+	uint8_t materialType = 0;
+	if (!bsData.Read(objectId) || !bsData.Read(materialType) || objectId >= MAX_OBJECTS)
+		return;
 
-	CObject* pObject = pObjectPool->GetAt(ObjectID);
+	CObjectPool* objectPool = pNetGame->GetObjectPool();
+	CObject* object = objectPool ? objectPool->GetAt(objectId) : nullptr;
+	if (!object)
+		return;
 
-	bsData.Read(byteMaterialType);
-	if (byteMaterialType == 1)
+	if (materialType == 1)
 	{
-		bsData.Read(byteMaterialIndex);
-		bsData.Read(wModelID);
-		bsData.Read(byteLength);
-		bsData.Read(txdname, byteLength);
-		txdname[byteLength] = '\0';
-		bsData.Read(byteLength);
-		bsData.Read(texname, byteLength);
-		texname[byteLength] = '\0';
-		bsData.Read(dwColor);
-		if (strlen(txdname) < 32 && strlen(texname) < 32)
-		{
-			if (pObject)
-				pObject->SetMaterial(wModelID, byteMaterialIndex, txdname, texname, dwColor);
-		}
+		uint8_t materialIndex = 0;
+		uint16_t modelId = 0xFFFF;
+		uint8_t length = 0;
+		char txdName[128]{};
+		char textureName[128]{};
+		uint32_t color = 0;
+
+		if (!bsData.Read(materialIndex) || !bsData.Read(modelId) ||
+			!bsData.Read(length) || length >= sizeof(txdName))
+			return;
+		if (!bsData.Read(txdName, length))
+			return;
+		txdName[length] = '\0';
+		if (!bsData.Read(length) || length >= sizeof(textureName))
+			return;
+		if (!bsData.Read(textureName, length) || !bsData.Read(color))
+			return;
+		textureName[length] = '\0';
+		object->SetMaterial(modelId, materialIndex, txdName, textureName, color);
 	}
-	else if (byteMaterialType == 2)
+	else if (materialType == 2)
 	{
-		bsData.Read(byteMaterialIndex);
-		bsData.Read(byteMaterialSize);
-		bsData.Read(byteLength);
-		bsData.Read(fontname, byteLength);
-		bsData.Read(byteFontSize);
-		bsData.Read(byteBold);
-		bsData.Read(dwFontColor);
-		bsData.Read(dwBackColor);
-		bsData.Read(byteTextAlignment);
+		uint8_t materialIndex = 0;
+		uint8_t materialSize = 0;
+		uint8_t fontNameLength = 0;
+		char fontName[64]{};
+		uint8_t fontSize = 0;
+		uint8_t bold = 0;
+		uint32_t fontColor = 0;
+		uint32_t backgroundColor = 0;
+		uint8_t alignment = 0;
+		char text[2048]{};
 
-		stringCompressor->DecodeString(text, 2048, &bsData);
-
-
-		if (strlen(fontname) > 0 && strlen(fontname) < 32)
-		{
-			if (pObject) {
-				pObject->SetMaterialText(
-						byteMaterialIndex,
-						text,
-						byteMaterialSize,
-						fontname,
-						byteFontSize,
-						byteBold,
-						dwFontColor,
-						dwBackColor,
-						byteTextAlignment
-				);
-			}
-		}
+		if (!bsData.Read(materialIndex) || !bsData.Read(materialSize) ||
+			!bsData.Read(fontNameLength) || fontNameLength >= sizeof(fontName))
+			return;
+		if (!bsData.Read(fontName, fontNameLength))
+			return;
+		fontName[fontNameLength] = '\0';
+		if (!bsData.Read(fontSize) || !bsData.Read(bold) ||
+			!bsData.Read(fontColor) || !bsData.Read(backgroundColor) ||
+			!bsData.Read(alignment))
+			return;
+		stringCompressor->DecodeString(text, sizeof(text), &bsData);
+		object->SetMaterialText(materialIndex, text, materialSize, fontName,
+			fontSize, bold != 0, fontColor, backgroundColor, alignment);
 	}
-	*/
 }
 
 

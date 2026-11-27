@@ -107,7 +107,8 @@ CObject::~CObject()
     m_dwGTAId = 0;
 }
 void CObject::Process(float fElapsedTime)
-{/*
+{
+	if (!m_pEntity) return;
 	if (m_AttachedVehicleID != INVALID_VEHICLE_ID)
 	{
 		if (pNetGame)
@@ -256,7 +257,6 @@ void CObject::Process(float fElapsedTime)
 
         m_pEntity->Add();
 	}
- */
 }
 
 // 0.3.7
@@ -529,17 +529,69 @@ void CObject::StopMoving()
 // 0.3.7
 void CObject::SetAttachedObject(uint16_t ObjectID, CVector* vecPos, CVector* vecRot, bool bSyncRotation)
 {
-
+	if (ObjectID == INVALID_OBJECT_ID)
+	{
+		m_AttachedObjectID = INVALID_OBJECT_ID;
+		m_vecAttachedPos.x = 0.0f;
+		m_vecAttachedPos.y = 0.0f;
+		m_vecAttachedPos.z = 0.0f;
+		m_vecAttachedRot.x = 0.0f;
+		m_vecAttachedRot.y = 0.0f;
+		m_vecAttachedRot.z = 0.0f;
+		m_bSyncRotation = false;
+	}
+	else
+	{
+		m_AttachedObjectID = ObjectID;
+		m_vecAttachedPos.x = vecPos->x;
+		m_vecAttachedPos.y = vecPos->y;
+		m_vecAttachedPos.z = vecPos->z;
+		m_vecAttachedRot.x = vecRot->x;
+		m_vecAttachedRot.y = vecRot->y;
+		m_vecAttachedRot.z = vecRot->z;
+		m_bSyncRotation = bSyncRotation;
+	}
 }
 // 0.3.7
 void CObject::SetAttachedVehicle(uint16_t VehicleID, CVector* vecPos, CVector* vecRot)
 {
-
+	if (VehicleID == INVALID_VEHICLE_ID)
+	{
+		m_AttachedVehicleID = INVALID_VEHICLE_ID;
+		m_vecAttachedPos.x = 0.0f;
+		m_vecAttachedPos.y = 0.0f;
+		m_vecAttachedPos.z = 0.0f;
+		m_vecAttachedRot.x = 0.0f;
+		m_vecAttachedRot.y = 0.0f;
+		m_vecAttachedRot.z = 0.0f;
+	}
+	else
+	{
+		m_AttachedVehicleID = VehicleID;
+		m_vecAttachedPos.x = vecPos->x;
+		m_vecAttachedPos.y = vecPos->y;
+		m_vecAttachedPos.z = vecPos->z;
+		m_vecAttachedRot.x = vecRot->x;
+		m_vecAttachedRot.y = vecRot->y;
+		m_vecAttachedRot.z = vecRot->z;
+	}
 } 
 // 0.3.7
 void CObject::AttachToVehicle(CVehicle* pVehicle)
 {
-
+    if (GamePool_Object_GetAt(m_dwGTAId)) {
+        if (!ScriptCommand(&is_object_attached, m_dwGTAId)) {
+            ScriptCommand(&attach_object_to_car,
+                          m_dwGTAId,
+                          pVehicle->m_dwGTAId,
+                          m_vecAttachedPos.x,
+                          m_vecAttachedPos.y,
+                          m_vecAttachedPos.z,
+                          m_vecAttachedRot.x,
+                          m_vecAttachedRot.y,
+                          m_vecAttachedRot.z);
+        }
+    }
 }
 // 0.3.7
 void CObject::AttachToObject(CObject* pObject)
@@ -561,7 +613,28 @@ void CObject::AttachToObject(CObject* pObject)
 
 bool CObject::AttachedToMovingEntity()
 {
+	if(m_AttachedObjectID == INVALID_OBJECT_ID)
+	{
+		if(m_AttachedVehicleID != INVALID_VEHICLE_ID)
+			return true;
 
+		return (m_byteMoving & 1);
+	}
+	else
+	{
+		if(m_AttachedObjectID >= 0 && m_AttachedObjectID < MAX_OBJECTS)
+		{
+			if(pNetGame)
+			{
+				CObjectPool *pObjectPool = pNetGame->GetObjectPool();
+				if(pObjectPool)
+				{
+					CObject *pObject = pObjectPool->GetAt(m_AttachedObjectID);
+					if(pObject) return (pObject->m_byteMoving & 1);
+				}
+			}
+		}
+	}
 
 	return false;
 }
