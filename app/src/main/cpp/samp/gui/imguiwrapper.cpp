@@ -174,6 +174,36 @@ void ImGuiWrapper::renderDrawData(ImDrawData* draw_data)
 	const RwReal nearScreenZ = CSprite2d::NearScreenZ;
 	const RwReal recipNearClip = CSprite2d::RecipNearClip;
 
+	/* O ImGui (setupRenderState) desliga z-test, z-write, fog e cull no estado
+	   global do RenderWare e nunca devolvia. Como este desenho e' a ultima
+	   coisa do frame, o mundo do frame seguinte herdava esses estados: mapa e
+	   texturas estourados/z-fighting, neblina sumindo e perda de FPS (cull
+	   desligado). Guarda o estado antes e restaura depois. */
+	static const RwRenderState s_savedStates[] = {
+		rwRENDERSTATEZTESTENABLE,
+		rwRENDERSTATEZWRITEENABLE,
+		rwRENDERSTATEVERTEXALPHAENABLE,
+		rwRENDERSTATESRCBLEND,
+		rwRENDERSTATEDESTBLEND,
+		rwRENDERSTATEFOGENABLE,
+		rwRENDERSTATECULLMODE,
+		rwRENDERSTATEBORDERCOLOR,
+		rwRENDERSTATEALPHATESTFUNCTION,
+		rwRENDERSTATEALPHATESTFUNCTIONREF,
+		rwRENDERSTATETEXTUREFILTER,
+		rwRENDERSTATETEXTUREADDRESS,
+		rwRENDERSTATETEXTURERASTER
+	};
+	constexpr int kSavedStateCount = sizeof(s_savedStates) / sizeof(s_savedStates[0]);
+	void* savedState[kSavedStateCount] = {};
+	const bool bSaveState = (RwRenderStateGet != nullptr);
+
+	if (bSaveState)
+	{
+		for (int i = 0; i < kSavedStateCount; i++)
+			RwRenderStateGet(s_savedStates[i], &savedState[i]);
+	}
+
 	checkVertexBuffer(draw_data);
 	setupRenderState(draw_data);
 
@@ -232,6 +262,11 @@ void ImGuiWrapper::renderDrawData(ImDrawData* draw_data)
 		vtx_offset += cmd_list->VtxBuffer.Size;
 	}
 
+	if (bSaveState)
+	{
+		for (int i = 0; i < kSavedStateCount; i++)
+			RwRenderStateSet(s_savedStates[i], savedState[i]);
+	}
 }
 
 bool ImGuiWrapper::createFontTexture()

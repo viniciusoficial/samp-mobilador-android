@@ -134,6 +134,11 @@ void SetNexionAspectRatio(float aspectRatio)
     g_customAspectRatio = aspectRatio;
     if (aspectRatio <= 0.1f)
     {
+        // "Automatico": volta para a proporcao nativa calculada pelo jogo.
+        if (ms_fAspectRatio)
+        {
+            *ms_fAspectRatio = CDraw__CalculateAspectRatio ? CDraw__CalculateAspectRatio() : 0.0f;
+        }
         return;
     }
 

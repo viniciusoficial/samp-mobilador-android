@@ -138,7 +138,7 @@ void CPlayerBubblePool::Draw(ImGuiRenderer* renderer)
                     if (pRemotePlayer && pRemotePlayer->IsActive()) {
                         CPlayerPed *pPlayerPed = pRemotePlayer->GetPlayerPed();
 
-                        if (pPlayerPed && pPlayerPed->m_pPed->IsAdded()) {
+                        if (pPlayerPed && pPlayerPed->m_pPed && pPlayerPed->m_pPed->IsAdded()) {
                             if (pPlayerPed->m_pPed->GetDistanceFromCamera() <=
                                 m_pPlayerBubble[i]->fDistance) {
                                 CVector VecPos;
@@ -147,6 +147,14 @@ void CPlayerBubblePool::Draw(ImGuiRenderer* renderer)
                                 VecPos.z = 0.0f;
 
                                 pPlayerPed->GetBonePosition(8, &VecPos);
+
+                                // Bone nao escrito: usa a posicao do ped em vez
+                                // de (0,0,0) (origem do mapa).
+                                if (VecPos.x == 0.0f && VecPos.y == 0.0f && VecPos.z == 0.0f)
+                                {
+                                    VecPos = pPlayerPed->m_pPed->GetPosition();
+                                    VecPos.z += 0.9f;
+                                }
 
                                 CVector TagPos;
                                 TagPos.x = VecPos.x;
@@ -168,7 +176,9 @@ void CPlayerBubblePool::Draw(ImGuiRenderer* renderer)
                                         g_libGTASA + 0x5F449C))(&TagPos, &Out, 0, 0, 0, 0);
 
                                 if (Out.z < 1.0f) {
-                                    return;
+                                    // continue: um balao fora da tela nao pode
+                                    // cancelar o desenho dos outros jogadores.
+                                    continue;
                                 }
 
                                 //ImVec2 pos = ImVec2(Out.x, Out.y - (pGUI->GetFontSize() * 1.67));

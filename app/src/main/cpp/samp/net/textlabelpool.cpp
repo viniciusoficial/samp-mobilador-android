@@ -109,8 +109,15 @@ void C3DTextLabelPool::Render(ImGuiRenderer* renderer)
                     if (fDist < pTextLabel->fDistance && fDist >= 0.0f) {
                         CPlayerPed* pRemotePed = pPlayer->GetPlayerPed();
                         if (pRemotePed && pRemotePed->m_pPed && pRemotePed->m_pPed->IsAdded()) {
-                            CVector matBone;
+                            CVector matBone = { 0.0f, 0.0f, 0.0f };
                             pRemotePed->GetBonePosition(8, &matBone);
+
+                            // Bone nao escrito (ped sem skeleton/bone 8): cairia
+                            // em (0,0,0), a origem do mapa, e o texto do jogador
+                            // nunca aparecia. Usa a posicao do ped.
+                            if (matBone.x == 0.0f && matBone.y == 0.0f && matBone.z == 0.0f)
+                                matBone = pRemotePed->m_pPed->GetPosition();
+
                             vecTextPos.x = matBone.x + pTextLabel->vecPos.x;
                             vecTextPos.y = matBone.y + pTextLabel->vecPos.y;
                             vecTextPos.z = matBone.z + 0.23f + pTextLabel->vecPos.z;

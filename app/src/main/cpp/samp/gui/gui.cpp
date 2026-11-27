@@ -138,6 +138,18 @@ void UI::drawList()
 {
     if (!visible()) return;
 
+    /* 3D text labels e balões de chat eram criados e nunca desenhados (nenhum
+       ponto do cliente chamava esses Render). Resultado: todos os textos do
+       mundo (nomes/avisos sobre players, portas, NPCs) simplesmente sumiam. */
+    if (pNetGame)
+    {
+        if (C3DTextLabelPool* pLabelPool = pNetGame->GetTextLabelPool())
+            pLabelPool->Render(renderer());
+
+        if (CPlayerBubblePool* pBubblePool = pNetGame->GetPlayerBubblePool())
+            pBubblePool->Render(renderer());
+    }
+
     if (pPlayerTags) pPlayerTags->Render(renderer());
 
     draw(renderer());

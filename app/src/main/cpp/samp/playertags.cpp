@@ -37,7 +37,16 @@ void CPlayerTags::Render(ImGuiRenderer* renderer)
 	}
 	if (!pNetGame->m_pNetSet->bShowNameTags)
 	{
-		if (bDiag) LOGD("nametags: desligado pelo servidor (bShowNameTags=0)");
+		// O servidor manda ShowNameTags=0 no InitGame (ele desenha os nomes por
+		// conta propria, via 3D text labels). Loga junto o resto das settings
+		// para dar para confirmar no logcat que o pacote foi lido certo.
+		if (bDiag)
+		{
+			LOGD("nametags: desligado pelo servidor (bShowNameTags=0) drawDist=%.1f los=%d markers=%d",
+				 pNetGame->m_pNetSet->fNameTagDrawDistance,
+				 pNetGame->m_pNetSet->bNameTagLOS ? 1 : 0,
+				 pNetGame->m_pNetSet->iShowPlayerMarkers);
+		}
 		return;
 	}
 	if (!pGame) return;
@@ -71,7 +80,9 @@ void CPlayerTags::Render(ImGuiRenderer* renderer)
 		if (!pPlayerPool->GetSlotState(playerId)) continue;
 
 		CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(playerId);
-		if (!pRemotePlayer || !pRemotePlayer->IsActive() || !pRemotePlayer->m_bShowNameTag || pRemotePlayer->IsNPC())
+		// NPCs (atores/bots do servidor) tambem tem nametag no cliente 0.3.7;
+		// filtra-los deixava os NPCs sem nome nenhum.
+		if (!pRemotePlayer || !pRemotePlayer->IsActive() || !pRemotePlayer->m_bShowNameTag)
 			continue;
 
 		iActive++;

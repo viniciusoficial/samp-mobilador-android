@@ -69,6 +69,19 @@ void InitGame(RPCParameters* rpcParams)
 	bsInitGame.Read(iNetModeSendMultiplier);
 	bsInitGame.Read(iLagCompensation);
 
+	// Uma linha unica com o que o servidor mandou no InitGame. Sem isso nao da
+	// para saber se um nametag ausente e' o servidor (ShowNameTags 0) ou leitura
+	// errada do pacote.
+	LOGI("InitGame: showNameTags=%d nameTagDist=%.1f nameTagLOS=%d markers=%d zoneNames=%d hour=%d weather=%d playerId=%d",
+		 pNetGame->m_pNetSet->bShowNameTags ? 1 : 0,
+		 pNetGame->m_pNetSet->fNameTagDrawDistance,
+		 pNetGame->m_pNetSet->bNameTagLOS ? 1 : 0,
+		 pNetGame->m_pNetSet->iShowPlayerMarkers,
+		 pNetGame->m_pNetSet->bZoneNames ? 1 : 0,
+		 pNetGame->m_pNetSet->byteWorldTime_Hour,
+		 pNetGame->m_pNetSet->byteWeather,
+		 (int)MyPlayerID);
+
 	Log::addParameter("bUseCJWalk", pNetGame->m_pNetSet->bUseCJWalk);
 	Log::addParameter("bZoneNames", pNetGame->m_pNetSet->bZoneNames);
 	Log::addParameter("bAllowWeapons", pNetGame->m_pNetSet->bAllowWeapons);
