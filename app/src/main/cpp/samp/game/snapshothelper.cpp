@@ -234,11 +234,9 @@ RwTexture* CSnapShotHelper::CreatePedSnapShot(int iModel, uint32_t dwColor, CVec
 {
     if (iModel <= 0 || iModel > 20000) return nullptr;
 
-    Log("Ped snapshot: %d", iModel);
-
     // Validate and load model
     if (!CModelInfo::GetModelInfo(iModel)) {
-        Log("Ped model %d not found", iModel);
+        LOGW("ped snapshot: model %d not found", iModel);
         return nullptr;
     }
 
@@ -252,7 +250,7 @@ RwTexture* CSnapShotHelper::CreatePedSnapShot(int iModel, uint32_t dwColor, CVec
     }
 
     if (!CStreaming::IsModelLoaded(iModel)) {
-        Log("Ped model %d failed to load", iModel);
+        LOGW("ped snapshot: model %d failed to load", iModel);
         CStreaming::RemoveModelIfNoRefs(iModel);
         return nullptr;
     }
@@ -267,15 +265,18 @@ RwTexture* CSnapShotHelper::CreatePedSnapShot(int iModel, uint32_t dwColor, CVec
     // RwTextureCreate
     RwTexture* bufferTexture = RwTextureCreate(raster);
     if (!bufferTexture) {
-        Log("Failed to create texture");
+        LOGE("ped snapshot: RwTextureCreate failed (model %d)", iModel);
         RwRasterDestroy(raster);
         CStreaming::RemoveModelIfNoRefs(iModel);
         return nullptr;
     }
 
+    // Slot 208 is a sentinel above PLAYER_PED_SLOTS: CPlayerPed bounds-check the
+    // RemotePlayerKeys[]/dwPlayerPedPtrs[] writes so it never leaks into other globals.
     CPlayerPed* pPed = new CPlayerPed(208, 0, 0.0f, 0.0f, 0.0f, 0.0f);
-    if (!pPed) {
-        Log("Failed to create ped");
+    if (!pPed || !pPed->m_pPed) {
+        LOGE("ped snapshot: could not create ped (model %d)", iModel);
+        delete pPed;
         RwTextureDestroy(bufferTexture);
         CStreaming::RemoveModelIfNoRefs(iModel);
         return nullptr;

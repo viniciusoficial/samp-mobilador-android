@@ -64,7 +64,9 @@ bool CPhysical::IsAdded()
         if(*(uintptr*)this == g_libGTASA + 0x81E628)
             return false;
 
-        if(*(uintptr_t*)m_pMovingList)
+        // m_pMovingList pode ser nulo (entidade nunca adicionada / jid removida);
+        // sem esta checagem a leitura derrubava o jogo com SIGSEGV.
+        if(m_pMovingList && *(uintptr_t*)m_pMovingList)
             return true;
     }
 

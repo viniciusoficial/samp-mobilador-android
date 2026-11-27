@@ -520,12 +520,10 @@ bool CRemotePlayer::Spawn(uint8_t byteTeam, int iSkin, CVector *vecPos, float fR
 	CPlayerPed* pPlayerPed = pGame->NewPlayer(iSkin, vecPos->x, vecPos->y, vecPos->z, fRotation, true, m_bIsNPC);
 	if (pPlayerPed)
 	{
-        Log("CRemotePlayer::Spawn 1");
 		if (dwColor) {
 			SetRadarColor(m_PlayerID, dwColor);
 		}
 
-        Log("CRemotePlayer::Spawn 2");
 		if (m_dwMarker) {
 			pGame->DisableMarker(m_dwMarker);
 			m_dwMarker = 0;
@@ -544,15 +542,12 @@ bool CRemotePlayer::Spawn(uint8_t byteTeam, int iSkin, CVector *vecPos, float fR
 			pPlayerPed->SetFightingStyle(byteFightingStyle);
 		}
 
-        Log("CRemotePlayer::Spawn 3");
-
 		SetState(PLAYER_STATE_SPAWNED);
-        Log("CRemotePlayer::Spawn 4");
 		return true;
 	}
 	else
 	{
-        Log("CRemotePlayer::Spawn no spawn");
+		LOGW("player %d spawn failed (skin %d)", m_PlayerID, iSkin);
 		SetState(PLAYER_STATE_NONE);
 		return false;
 	}

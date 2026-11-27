@@ -45,9 +45,17 @@ void CRealTimeShadowManager::Exit() { // AKA `Shutdown`
 }
 
 void CRealTimeShadowManager::ReturnRealTimeShadow(CRealTimeShadow *shdw) {
-    if (shdw->m_pOwner) {
+    // This is reached from CPhysical::~CPhysical() while a ped is being destroyed.
+    // The native implementation crashed with SIGSEGV (fault 0x190) when the shadow
+    // manager was not initialised, so everything here must be null-safe.
+    if (shdw == nullptr) {
+        return;
+    }
+
+    if (shdw->m_pOwner != nullptr) {
         shdw->m_pOwner->m_pShadowData = nullptr;
     }
+
     shdw->m_pOwner = nullptr;
 }
 
@@ -66,7 +74,7 @@ CRealTimeShadow* CRealTimeShadowManager::GetRealTimeShadow(CPhysical* physical)
 }
 
 void CRealTimeShadowManager::DoShadowThisFrame(CPhysical* physical) {
-    if (!m_bInitialised)
+    if (!m_bInitialised || physical == nullptr)
         return;
 
     const auto shdwsQuality = CMobileSettings::ms_MobileSettings[MS_Shadows].value;
@@ -93,10 +101,24 @@ void CRealTimeShadowManager::DoShadowThisFrame(CPhysical* physical) {
 }
 
 void ReturnRealTimeShadow_hook(CRealTimeShadowManager* thiz, CRealTimeShadow *shdw) {
-    thiz->ReturnRealTimeShadow(shdw);
+    if (shdw == nullptr) {
+        return;
+    }
+
+    // `thiz` is intentionally not dereferenced: the native manager pointer can be
+    // null (shadows disabled on low-end settings), which is exactly what crashed.
+    if (shdw->m_pOwner != nullptr) {
+        shdw->m_pOwner->m_pShadowData = nullptr;
+    }
+
+    shdw->m_pOwner = nullptr;
 }
 
 void DoShadowThisFrame_hook(CRealTimeShadowManager* thiz, CPhysical *physical) {
+    if (thiz == nullptr || physical == nullptr) {
+        return;
+    }
+
     thiz->DoShadowThisFrame(physical);
 }
 

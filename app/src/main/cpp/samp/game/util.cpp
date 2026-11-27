@@ -2004,12 +2004,11 @@ uintptr_t LoadTexture(const char* texname)
     {
         uintptr_t texture = (uintptr_t)CUtil::LoadTextureFromDB(texdb[i], texname);
         if (texture != 0) {
-            Log("Texture: %s loaded from %s", texname, texdb[i]);
             return texture;
         }
     }
 
-    Log("Texture: %s not found!", texname);
+    LOGW("texture not found: %s", texname);
     return 0;
 }
 
@@ -2322,6 +2321,13 @@ float GetDistance(RwV3d vec1, RwV3d vec2)
 CPedGTA* dwPlayerPedPtrs[PLAYER_PED_SLOTS];
 void SetPlayerPedPtrRecord(uint8_t bytePlayer, CPedGTA* dwPedPtr)
 {
+	// Bounds check: snapshot peds use player numbers above PLAYER_PED_SLOTS (ex: 208).
+	// Without this the write runs past dwPlayerPedPtrs and corrupts adjacent globals.
+	if (bytePlayer >= PLAYER_PED_SLOTS)
+	{
+		return;
+	}
+
 	dwPlayerPedPtrs[bytePlayer] = dwPedPtr;
 }
 uint8_t FindPlayerNumFromPedPtr(CPedGTA* dwPedPtr)

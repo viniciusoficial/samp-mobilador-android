@@ -123,7 +123,6 @@ uintptr_t LoadFromTxdSlot(const char* szSlot, const char* szTexture)
         tex = (RwTexture*)CUtil::LoadTextureFromDB(szSlot, szTexture);
     }
 
-   Log("%s loaded from %s", szTexture, szSlot);
     return (uintptr_t)tex;
 }
 

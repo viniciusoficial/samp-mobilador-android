@@ -373,7 +373,8 @@ void Log(const char* fmt, ...)
 	vsnprintf(buffer, sizeof(buffer), fmt, arg);
 	va_end(arg);
 
-	LOGI("%s", buffer);
+	// LogEx() chama Log(); usar LOGI aqui causaria recursao infinita.
+	__android_log_write(ANDROID_LOG_INFO, "SAMP", buffer);
 	firebase::crashlytics::Log(buffer);
 
 	std::lock_guard<std::mutex> lock(logMutex);

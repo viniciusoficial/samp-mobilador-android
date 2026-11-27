@@ -17,6 +17,7 @@
 #include <unwind.h>
 #include <android/log.h>
 #include "main.h"
+#include "log.h"
 
 void Log(const char* fmt, ...);
 
@@ -171,6 +172,19 @@ public:
                   reinterpret_cast<void*>(g_libGTASA),
                   reinterpret_cast<void*>(g_libSAMP));
         WriteLine(fd, "Context: LastRenderedObj=%d", g_iLastRenderedObject);
+
+        // Ultimos avisos/erros, com arquivo:linha, para saber o que falhou antes do crash.
+        const int nRecent = LogRecentCount();
+        if (nRecent > 0)
+        {
+            WriteLine(fd, "------------ LAST ERRORS (file:line) ------------");
+            for (int i = 0; i < nRecent; ++i)
+            {
+                const char* recent = LogRecentAt(i);
+                if (recent) WriteLine(fd, "  %s", recent);
+            }
+            WriteLine(fd, "-------------------------------------------------");
+        }
 
         if (context) {
 #if defined(__aarch64__)

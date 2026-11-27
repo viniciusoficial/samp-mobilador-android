@@ -99,7 +99,8 @@ CPlayerPed::CPlayerPed(int iNum, int iSkin, float fX, float fY, float fZ, float 
 
 
     // GameResetPlayerKeys
-    memset(&RemotePlayerKeys[m_bytePlayerNumber], 0, sizeof(PAD_KEYS));
+    if (m_bytePlayerNumber < PLAYER_PED_SLOTS)
+        memset(&RemotePlayerKeys[m_bytePlayerNumber], 0, sizeof(PAD_KEYS));
 
     SetTargetRotation(fRotation);
     RwMatrix mat = m_pPed->GetMatrix().ToRwMatrix();
@@ -118,12 +119,22 @@ CPlayerPed::CPlayerPed(int iNum, int iSkin, float fX, float fY, float fZ, float 
 
 CPlayerPed::~CPlayerPed()
 {
-    auto modelId = m_pPed->m_nModelIndex;
-    Log("Destroying PlayerPed(%d)", m_bytePlayerNumber);
+    LOGD("destroy ped %d", m_bytePlayerNumber);
 
-    memset(&RemotePlayerKeys[m_bytePlayerNumber], 0, sizeof(PAD_KEYS));
-    // GameResetPlayerKeys
-    SetPlayerPedPtrRecord(m_bytePlayerNumber, 0);
+    // Bounds check: snapshot peds (ex: slot 208) are above PLAYER_PED_SLOTS and
+    // must never touch RemotePlayerKeys[]/dwPlayerPedPtrs[].
+    if (m_bytePlayerNumber < PLAYER_PED_SLOTS)
+    {
+        memset(&RemotePlayerKeys[m_bytePlayerNumber], 0, sizeof(PAD_KEYS));
+        // GameResetPlayerKeys
+        SetPlayerPedPtrRecord(m_bytePlayerNumber, 0);
+    }
+
+    if (!m_pPed)
+    {
+        m_dwGTAId = 0;
+        return;
+    }
 
     if (m_pPed && (GamePool_Ped_GetAt(m_dwGTAId) != 0) && IsValidGamePed(m_pPed) /* CPlaceable */)
     {
@@ -227,25 +238,19 @@ bool CPlayerPed::IsDead()
 // 0.3.7
 void CPlayerPed::TogglePlayerControllable(bool bControllable)
 {
-    Log("TogglePlayerControllable");
     if (!m_pPed) return;
-    Log("TogglePlayerControllable2");
     if(!m_dwGTAId)return;
-    Log("TogglePlayerControllable3");
     if (!IsValidGamePed(m_pPed) || !GamePool_Ped_GetAt(m_dwGTAId)) {
         return;
     }
-    Log("TogglePlayerControllable4");
     //CHUD::bIsDisableControll = !bToggle;
     if(!bControllable)
     {
-        Log("TogglePlayerControllable5");
         ScriptCommand(&toggle_player_controllable, m_bytePlayerNumber, 0);
         ScriptCommand(&lock_actor, m_dwGTAId, 1);
     }
     else if(bControllable)
     {
-        Log("TogglePlayerControllable6");
         ScriptCommand(&toggle_player_controllable, m_bytePlayerNumber, 1);
         ScriptCommand(&lock_actor, m_dwGTAId, 0);
     }

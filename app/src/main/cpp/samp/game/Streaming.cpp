@@ -3,6 +3,7 @@
 //
 
 #include "Streaming.h"
+#include "../log.h"
 #include "../vendor/armhook/patch.h"
 #include "StreamingInfo.h"
 #include "game/Models/ModelInfo.h"
@@ -22,26 +23,24 @@
 extern UI *pUI;
 extern CGame* pGame;
 bool CStreaming::TryLoadModel(int modelId) {
-    Log("TryLoadModel %d", modelId);
     if(!pGame->IsModelLoaded(modelId)) {
-        Log("TryLoadModel 1");
         pGame->RequestModel(modelId, 1);
-        Log("TryLoadModel 11");
         pGame->LoadRequestedModels();
-        Log("TryLoadModel 2");
+
         uint32 count = 0;
         while (!pGame->IsModelLoaded(modelId)) {
             count++;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
             if (count > 30) {
-                pUI->chat()->addDebugMessage("{ff0000} Error loading model %d", modelId);
+                LOGE("timeout loading model %d", modelId);
+                if (pUI && pUI->chat())
+                    pUI->chat()->addDebugMessage("{ff0000} Error loading model %d", modelId);
                 return false;
             }
         }
-        Log("TryLoadModel 3");
     }
-    Log("TryLoadModel 4");
+
     return true;
 }
 

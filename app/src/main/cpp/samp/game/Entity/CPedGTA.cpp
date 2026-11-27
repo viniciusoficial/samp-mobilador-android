@@ -3,6 +3,7 @@
 //
 
 #include "CPedGTA.h"
+#include "../../log.h"
 #include "patch.h"
 #include "game/General.h"
 #include "game/Streaming.h"
@@ -158,12 +159,11 @@ CPedGTA::~CPedGTA() {
 void CPedGTA::GiveWeapon(int iWeaponID, int iAmmo)
 {
     int iModelID = GameGetWeaponModelIDFromWeaponID(iWeaponID);
-    Log("GiveWeapon, iModelID %d, iWeaponID %d", iModelID, iWeaponID);
 
-    if (iModelID == -1 || iModelID == 350 || iModelID == 365) return;
+    if (iModelID <= 0 || iModelID == 350 || iModelID == 365) return;
 
     if (!CStreaming::TryLoadModel(iModelID)) {
-        Log("Model %d not loaded, skipping weapon", iModelID);
+        LOGW("model %d not loaded, skipping weapon %d", iModelID, iWeaponID);
         return;
     }
 

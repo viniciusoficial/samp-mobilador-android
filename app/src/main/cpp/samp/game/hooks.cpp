@@ -2035,6 +2035,10 @@ void InjectHooks()
 	// but never installed on the main hook path.
 	CMobileMenu::InjectHooks();
 	CMobileSettings::InjectHooks();
+	// CRealTimeShadowManager was never installed. Without these hooks the native
+	// ReturnRealTimeShadow crashes (SIGSEGV, fault 0x190) whenever a ped is
+	// destroyed and the shadow manager is not initialised.
+	CRealTimeShadowManager::InjectHooks();
 }
 
 void (*CPlaceable_InitMatrixArray)(void);

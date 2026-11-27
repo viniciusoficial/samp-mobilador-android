@@ -184,13 +184,15 @@ public:
         CHook::WriteMemory(dest, (uintptr_t)&vPtr, 4);
     }
 
-    static uintptr_t getSym(const char* sym)
+        static uintptr_t getSym(const char* sym)
     {
 
         auto res = (uintptr_t)dlsym(lib, sym);
-        if(res == 0) {
-            Log("[ERROR]: Failed to search for libraries: %s", sym);
-            exit(0);
+        if(res == 0)
+        {
+            // Do NOT exit(0) here: a missing (hidden) symbol used to kill the game
+            // silently. Report it with the symbol name and let the caller skip the hook.
+            Log("[hook] symbol not found: %s", sym);
             return 0;
         }
         return res;
@@ -277,12 +279,23 @@ public:
     static void Redirect(const char* sym, Func func)
     {
         auto addr = getSym(sym);
+        if (addr == 0)
+        {
+            Log("[hook] redirect skipped (unresolved): %s", sym);
+            return;
+        }
 
         Redirect(addr, func);
+        Log("[hook] redirect ok: %s", sym);
     }
     template <typename Ptr, typename Func>
     static void Redirect(Ptr ptr, Func func)
     {
+        if (ptr == 0)
+        {
+            Log("[hook] redirect skipped (null address)");
+            return;
+        }
 #ifdef __32BIT
         uint32_t hook[2] = {0xE51FF004, reinterpret_cast<uintptr_t>(func)};
         if (THUMBMODE(ptr)) {

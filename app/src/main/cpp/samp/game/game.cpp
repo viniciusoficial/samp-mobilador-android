@@ -26,14 +26,13 @@ bool CGame::bIsGameExiting = false;
 
 inline int FindFirstFreePlayerPedSlot()
 {
-    for (uint8_t x = 2; x < PLAYER_PED_SLOTS; ++x) {
+    for (int x = 2; x < PLAYER_PED_SLOTS; ++x) {
         if (!bUsedPlayerSlots[x]) {
-            Log("Found free slot: %d", x);
             return x;
         }
     }
-    Log("No free slot found!");
-    // Return -1 or an appropriate error code if no free slot is found
+
+    LOGE("no free player ped slot (limit %d)", PLAYER_PED_SLOTS);
     return -1;
 }
 
@@ -423,22 +422,34 @@ CObject* CGame::NewObject(int iModel, CVector vecPos, CVector vecRot, float fDra
 // 0.3.7 (�� ����������� ������ bIsNPC)
 CPlayerPed* CGame::NewPlayer(int iSkin, float fX, float fY, float fZ, float fRotation, bool unk, bool bIsNPC)
 {
-	uint8_t bytePedSlot = FindFirstFreePlayerPedSlot();
-	if (!bytePedSlot) return nullptr;
-	auto pPed = new CPlayerPed(bytePedSlot, iSkin, fX, fY, fZ, fRotation);
-	if (pPed && pPed->m_pPed) {
-		bUsedPlayerSlots[bytePedSlot] = true;
+	// NOTE: FindFirstFreePlayerPedSlot() returns -1 on failure. Casting it to uint8_t
+	// turned it into 255 and created a ped on an invalid slot (heap/global corruption).
+	const int iPedSlot = FindFirstFreePlayerPedSlot();
+	if (iPedSlot < 0 || iPedSlot >= PLAYER_PED_SLOTS) return nullptr;
+
+	auto pPed = new CPlayerPed(iPedSlot, iSkin, fX, fY, fZ, fRotation);
+	if (!pPed || !pPed->m_pPed) {
+		// Ped creation failed: do not leak the wrapper or keep the slot marked.
+		if (pPed) delete pPed;
+		return nullptr;
 	}
 
-    return pPed;
+	bUsedPlayerSlots[iPedSlot] = true;
+	return pPed;
 }
 // 0.3.7
 bool CGame::RemovePlayer(CPlayerPed* pPed)
 {
 	if (!pPed) return false;
 
+	// Slot must be read BEFORE delete: reading it afterwards was a use-after-free.
+	const uint8_t bytePedSlot = pPed->m_bytePlayerNumber;
+
 	delete pPed;
-	bUsedPlayerSlots[pPed->m_bytePlayerNumber] = false;
+
+	if (bytePedSlot < PLAYER_PED_SLOTS)
+		bUsedPlayerSlots[bytePedSlot] = false;
+
 	return true;
 }
 

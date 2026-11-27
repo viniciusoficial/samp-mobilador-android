@@ -658,7 +658,6 @@ extern "C"
         const bool active = captured == JNI_TRUE;
         if (!active)
             PcInputReleaseMouseButtons();
-        Log("[JNI-MOUSE] native capture=%d", active ? 1 : 0);
     }
 
     JNIEXPORT void JNICALL

@@ -131,7 +131,6 @@ bool CTextDrawPool::onTouchEvent(int type, bool multi, int x, int y)
 
             if (pTextDraw->m_TextDrawData.byteSelectable)
             {
-                Log("onTouchEvent textdraw 2");
                 switch (type)
                 {
                     case 2:
@@ -149,10 +148,7 @@ bool CTextDrawPool::onTouchEvent(int type, bool multi, int x, int y)
                         break;
 
                     case 1:
-                        Log("m_rectArea %f %f %f %f, clicked: %f %f", pTextDraw->m_rectArea.bottom, pTextDraw->m_rectArea.top,pTextDraw->m_rectArea.left,pTextDraw->m_rectArea.right,
-                            x,y);
                         if (IsPointInRect(x, y, &pTextDraw->m_rectArea)) {
-                            Log("Point is in rect");
                             m_wClickedTextDrawID = i;
                             SendClick();
                             pTextDraw->m_bHovered = false;

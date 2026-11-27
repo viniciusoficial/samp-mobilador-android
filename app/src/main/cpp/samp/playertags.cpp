@@ -21,63 +21,109 @@ CPlayerTags::~CPlayerTags() {}
 void CPlayerTags::Render(ImGuiRenderer* renderer)
 {
 	CVector vecPos;
-	RwMatrix matLocal, matPlayer;
 	int dwHitEntity;
 	char szNickBuf[64];
 
+	if (!renderer) return;
+	if (!pNetGame || !pNetGame->m_pNetSet) return;
+	if (!pNetGame->m_pNetSet->bShowNameTags) return;
+	if (!pGame) return;
+
+	// Nada aqui pode desreferenciar ponteiro nulo: este metodo roda todo frame,
+	// inclusive durante o spawn/remocao de jogadores.
+	CPlayerPed* pLocalPed = pGame->FindPlayerPed();
+	if (!pLocalPed || !pLocalPed->m_pPed) return;
+
+	CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+	if (!pPlayerPool) return;
+
 	static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0x9F86F8);
 
-	if (pNetGame && pNetGame->m_pNetSet->bShowNameTags)
+	const float fDrawDistance = pNetGame->m_pNetSet->fNameTagDrawDistance;
+	const bool bLOS = pNetGame->m_pNetSet->bNameTagLOS;
+
+	int iActive = 0, iDrawn = 0;
+	int iSkipPed = 0, iSkipDistance = 0, iSkipAdded = 0, iSkipLOS = 0;
+
+	for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
 	{
-		CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
-		matLocal = pGame->FindPlayerPed()->m_pPed->GetMatrix().ToRwMatrix();
+		if (!pPlayerPool->GetSlotState(playerId)) continue;
 
-		for (PLAYERID playerId = 0; playerId < MAX_PLAYERS; playerId++)
+		CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(playerId);
+		if (!pRemotePlayer || !pRemotePlayer->IsActive() || !pRemotePlayer->m_bShowNameTag || pRemotePlayer->IsNPC())
+			continue;
+
+		iActive++;
+
+		CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
+		if (!pPlayerPed || !pPlayerPed->m_pPed)
 		{
-			if (pPlayerPool->GetSlotState(playerId) == true)
-			{
-				CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(playerId);
+			iSkipPed++;
+			continue;
+		}
 
-				if (pRemotePlayer && pRemotePlayer->IsActive() && pRemotePlayer->m_bShowNameTag && !pRemotePlayer->IsNPC())
-				{
-					CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
+		const float fDistance = pPlayerPed->m_pPed->GetDistanceFromCamera();
+		if (fDistance > fDrawDistance)
+		{
+			iSkipDistance++;
+			continue;
+		}
 
-					if (pPlayerPed && pPlayerPed->m_pPed->GetDistanceFromCamera() <= pNetGame->m_pNetSet->fNameTagDrawDistance)
-					{
-						if (!pPlayerPed->m_pPed->IsAdded()) continue;
-						vecPos.x = 0.0f;
-						vecPos.y = 0.0f;
-						vecPos.z = 0.0f;
-						pPlayerPed->GetBonePosition(8, &vecPos);
+		if (!pPlayerPed->m_pPed->IsAdded())
+		{
+			iSkipAdded++;
+			continue;
+		}
 
-						CAMERA_AIM* pCam = GameGetInternalAim();
-						dwHitEntity = 0;
+		vecPos.x = 0.0f;
+		vecPos.y = 0.0f;
+		vecPos.z = 0.0f;
+		pPlayerPed->GetBonePosition(8, &vecPos);
 
-						if (pNetGame->m_pNetSet->bNameTagLOS)
-						{
-							dwHitEntity = CWorld::GetIsLineOfSightClear(vecPos, TheCamera.GetPosition(), true, false, false, true, false, false, false);
-						}
+		dwHitEntity = 0;
+		if (bLOS)
+		{
+			dwHitEntity = CWorld::GetIsLineOfSightClear(vecPos, TheCamera.GetPosition(), true, false, false, true, false, false, false);
+		}
 
-						if (!pNetGame->m_pNetSet->bNameTagLOS || dwHitEntity && !pRemotePlayer->IsNPC())
-						{
-							sprintf(szNickBuf, "%s (%d)", pPlayerPool->GetPlayerName(playerId), playerId);
-							this->Draw(renderer,&vecPos, szNickBuf,
-									   pRemotePlayer->GetPlayerColor(),
-									   pPlayerPed->m_pPed->GetDistanceFromCamera(),
-									   pRemotePlayer->m_fReportedHealth,
-									   pRemotePlayer->m_fReportedArmour,
-									   pRemotePlayer->m_bIsAFK,
-									   false);
-						}
-					}
-				}
-			}
+		if (!bLOS || dwHitEntity)
+		{
+			const char* szName = pPlayerPool->GetPlayerName(playerId);
+			snprintf(szNickBuf, sizeof(szNickBuf), "%s (%d)", szName ? szName : "Player", playerId);
+
+			this->Draw(renderer, &vecPos, szNickBuf,
+					   pRemotePlayer->GetPlayerColor(),
+					   fDistance,
+					   pRemotePlayer->m_fReportedHealth,
+					   pRemotePlayer->m_fReportedArmour,
+					   pRemotePlayer->m_bIsAFK,
+					   false);
+			iDrawn++;
+		}
+		else
+		{
+			iSkipLOS++;
+		}
+	}
+
+	// Diagnostico curto (1x a cada ~3s): diz exatamente qual filtro esta matando
+	// as nametags. Sem isso o log nao mostra nada e o problema fica invisivel.
+	static int s_iDiagFrame = 0;
+	if (++s_iDiagFrame >= 180)
+	{
+		s_iDiagFrame = 0;
+		if (iActive > 0 && iDrawn == 0)
+		{
+			LOGD("nametags: active=%d drawn=0 ped=%d dist=%d added=%d los=%d (losEnabled=%d drawDist=%.1f)",
+				 iActive, iSkipPed, iSkipDistance, iSkipAdded, iSkipLOS, bLOS ? 1 : 0, fDrawDistance);
 		}
 	}
 }
 
 void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick, uint32_t dwColor, float fDist, float fHealth, float fArmour, bool bAfk, bool bMicro)
 {
+	if (!renderer || !vec || !szNick) return;
+
 	CVector vecTagPos;
 
 	vecTagPos.x = vec->x;
@@ -85,7 +131,8 @@ void CPlayerTags::Draw(ImGuiRenderer* renderer, CVector* vec, const char* szNick
 	vecTagPos.z = vec->z;
 	vecTagPos.z += 0.25f + (fDist * 0.0475f);
 
-	CVector vecOut;
+	// Inicializado: se a projecao nao escrever nada, o teste abaixo descarta.
+	CVector vecOut = { 0.0f, 0.0f, 0.0f };
 	((void (*)(CVector*, CVector*, float*, float*, bool, bool))(g_libGTASA + 0x5F449C))(&vecTagPos, &vecOut, 0, 0, 0, 0);
 
 	if (vecOut.z < 1.0f) return;

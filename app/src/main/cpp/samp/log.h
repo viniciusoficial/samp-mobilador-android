@@ -2,10 +2,32 @@
 
 #include <sstream>
 #include <vector>
+#include <string>
+#include <atomic>
 #include <android/log.h>
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, "AX", __VA_ARGS__)
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "AXL", __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "AXL", __VA_ARGS__)
+
+/*
+ * Logging do samp
+ * ---------------
+ * LOGD/LOGI -> mensagens de fluxo (curtas, sem caminho de arquivo)
+ * LOGW/LOGE -> problemas, sempre com  <arquivo>:<linha>  para achar o ponto exato
+ *
+ * As duas ultimas linhas de erro/aviso ficam em um ring buffer fixo (sem
+ * alocacao) e sao despejadas no relatorio de crash, para saber o que falhou
+ * imediatamente antes do SIGSEGV.
+ */
+
+void LogEx(char level, const char* file, int line, const char* fmt, ...);
+
+void        LogRecentAdd(const char* line);
+int         LogRecentCount();
+const char* LogRecentAt(int index);
+int         LogRecentCapacity();
+
+#define LOGD(...) LogEx('D', __FILE__, __LINE__, __VA_ARGS__)
+#define LOGI(...) LogEx('I', __FILE__, __LINE__, __VA_ARGS__)
+#define LOGW(...) LogEx('W', __FILE__, __LINE__, __VA_ARGS__)
+#define LOGE(...) LogEx('E', __FILE__, __LINE__, __VA_ARGS__)
 
 struct TraceInfo
 {
@@ -21,15 +43,8 @@ public:
 	template<typename T>
 	static void addParameter(const std::string& func_param_name, T value)
 	{
-		//auto params = m_listTracedFuncs.front().params;
-
-		//std::stringstream ss;
-		//ss << func_param_name << " = " << value;
-		//params.push_back(ss.str());
-		//LOGI(ss.str().c_str()); 
+		// desativado: gerava ruido no log
 	};
 
 private:
-
-	//static std::list<TraceInfo> m_listTracedFuncs;
 };
