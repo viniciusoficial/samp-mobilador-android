@@ -10,6 +10,7 @@
 #include "../Net/NetGame.h"
 #include "../Game/Artwork/ArtworkManager.h"
 #include "../Game/NativeCameraMouse.h"
+#include "../Game/PcInput.h"
 
 #include <spdlog/spdlog.h>
 #include <atomic>
@@ -106,6 +107,11 @@ Java::Java(JNIEnv* env, jobject sampObj, jobject uiObj)
 		spdlog::error("UI class not found");
 		return;
 	}
+
+	// Overlay de configuracoes de teclado/mouse (comando /mob), definido na
+	// activity SAMP — mesmo papel do KeyboardMouseSettings do mobilador.
+	m_showKbMouseSettings = env->GetMethodID(sampClass, "showKeyboardMouseSettings", "()V");
+	clearJniException(env, "GetMethodID(showKeyboardMouseSettings)");
 
 	m_setPauseState = env->GetMethodID(uiClass, "setPauseState", "(Z)V");
 	clearJniException(env, "GetMethodID(setPauseState)");
@@ -243,6 +249,17 @@ void Java::showKeyboard(bool show)
 	}
 	env->CallVoidMethod(m_uiActivity, m_showKeyboard, static_cast<jboolean>(show));
 	clearJniException(env, "showKeyboard");
+}
+
+void Java::showKeyboardMouseSettings()
+{
+	JNIEnv* env = getEnv();
+	if (!env || !m_sampActivity || !m_showKbMouseSettings) {
+		spdlog::warn("showKeyboardMouseSettings unavailable");
+		return;
+	}
+	env->CallVoidMethod(m_sampActivity, m_showKbMouseSettings);
+	clearJniException(env, "showKeyboardMouseSettings");
 }
 
 void Java::showDialog(int dialog_id, int dialog_style, char* title, char* message, char* button1, char* button2)
@@ -451,50 +468,34 @@ extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_SAMP_onHardwareKeyEve
 }
 
 // ---- Physical mouse (relative deltas from Android generic motion events) ----
-// Mirrors PcInputSetMouseButton() from the mobilador: the Java side only reports
-// button 1..5, the native side owns the mask AND the pad-key mapping.
-static std::atomic<uint8_t> g_mouseButtonMask{0};
+// Todo o caminho passa por Game/PcInput.cpp (porte do mobilador).
 
 extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_SAMP_onMouseDelta(JNIEnv* env, jobject obj, jfloat dx, jfloat dy)
 {
 	(void) env;
 	(void) obj;
-	NativeCameraMouseEnqueue(static_cast<float>(dx), static_cast<float>(dy));
+	PcInputAddMouseDelta(static_cast<float>(dx), static_cast<float>(dy));
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_SAMP_onMouseButton(JNIEnv* env, jobject obj, jint button, jboolean pressed)
 {
 	(void) env;
 	(void) obj;
-
-	const int index = static_cast<int>(button);
-	if (index < 1 || index > 8)
-		return;
-
-	const uint8_t bit = static_cast<uint8_t>(1u << (index - 1));
-	uint8_t mask = g_mouseButtonMask.load(std::memory_order_acquire);
-	for (;;) {
-		const uint8_t next = static_cast<uint8_t>(pressed == JNI_TRUE ? (mask | bit)
-		                                                             : (mask & static_cast<uint8_t>(~bit)));
-		if (g_mouseButtonMask.compare_exchange_weak(mask, next, std::memory_order_acq_rel))
-			break;
-	}
-
-	NativeCameraMouseSetButtons(g_mouseButtonMask.load(std::memory_order_acquire));
+	PcInputSetMouseButton(static_cast<int>(button), -1, pressed == JNI_TRUE);
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_SAMP_onMouseWheel(JNIEnv* env, jobject obj, jint steps)
 {
 	(void) env;
 	(void) obj;
-	NativeCameraMouseEnqueueWheel(static_cast<int>(steps));
+	PcInputHandleWheel(static_cast<int>(steps));
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_SAMP_onMouseReset(JNIEnv* env, jobject obj)
 {
 	(void) env;
 	(void) obj;
-	g_mouseButtonMask.store(0, std::memory_order_release);
+	PcInputReleaseMouseButtons();
 	NativeCameraMouseReset();
 }
 

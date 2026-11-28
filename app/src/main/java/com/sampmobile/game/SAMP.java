@@ -29,6 +29,8 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
+import com.sampmobile.game.input.KeyboardMouseBridge;
+import com.sampmobile.game.input.KeyboardMouseSettings;
 import com.sampmobile.game.ui.GameInputArbiter;
 import com.sampmobile.game.ui.UI;
 import com.sampmobile.game.ui.cef.CefManager;
@@ -82,8 +84,8 @@ public class SAMP extends GTASA {
     private native void onHardwareKeyEvent(int keyCode, boolean isDown);
 
     /* Physical mouse: relative deltas, buttons and wheel are resolved by the
-     * native side (Game/PcMouseLook.cpp), which drives the SA camera and the
-     * local player keys. */
+     * native side (Game/PcInput.cpp + Game/NativeCameraMouse.cpp), which drives
+     * the SA camera and the local player keys. */
     private native void onMouseDelta(float dx, float dy);
     private native void onMouseButton(int button, boolean pressed);
     private native void onMouseWheel(int steps);
@@ -220,6 +222,10 @@ public class SAMP extends GTASA {
         } catch (UnsatisfiedLinkError e) {
             Log.e(TAG, e.getMessage() != null ? e.getMessage() : "UnsatisfiedLinkError in initializeSAMP");
         }
+
+        // Sistema de teclado/mouse PC (porte do mobilador): carrega binds/prefs e
+        // detecta teclado/mouse externo para esconder os widgets de toque.
+        initKeyboardMouse();
 
         // Consume one-shot HUD editor flag only after native Settings::initialize() has captured it.
         if (settings.isOpenHudEditOnStart()) {
@@ -360,6 +366,277 @@ public class SAMP extends GTASA {
         }
     });
 
+    /* ---------------------------------------------------------------------
+     * Teclado/mouse PC (porte fiel do mobilador)
+     *
+     * Game/PcInput.cpp guarda o estado das acoes; aqui apenas traduzimos
+     * KeyEvent/MotionEvent em PcInputAction, exatamente como o InputHandler
+     * do mobilador fazia. O overlay de /mob recebe as teclas sozinho porque
+     * e um FrameLayout focavel.
+     * ------------------------------------------------------------------- */
+
+    private static final int[] HARDWARE_EXTRA_KEYS = {
+            KeyEvent.KEYCODE_F5,
+            KeyEvent.KEYCODE_F6,
+            KeyEvent.KEYCODE_F7,
+            KeyEvent.KEYCODE_F8,
+            KeyEvent.KEYCODE_F10
+    };
+
+    private android.hardware.input.InputManager mInputManager;
+    private final android.hardware.input.InputManager.InputDeviceListener mInputDeviceListener =
+            new android.hardware.input.InputManager.InputDeviceListener() {
+                @Override
+                public void onInputDeviceAdded(int deviceId) {
+                    syncExternalInputPresence(true);
+                }
+
+                @Override
+                public void onInputDeviceRemoved(int deviceId) {
+                    syncExternalInputPresence(true);
+                }
+
+                @Override
+                public void onInputDeviceChanged(int deviceId) {
+                    syncExternalInputPresence(true);
+                }
+            };
+
+    private void initKeyboardMouse() {
+        try {
+            KeyboardMouseSettings.load(this);
+        } catch (Throwable t) {
+            Log.e(TAG, "KeyboardMouseSettings.load failed: " + t.getMessage(), t);
+        }
+        try {
+            mInputManager = (android.hardware.input.InputManager) getSystemService(Context.INPUT_SERVICE);
+            if (mInputManager != null) {
+                mInputManager.registerInputDeviceListener(mInputDeviceListener, null);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "InputManager unavailable: " + t.getMessage(), t);
+        }
+        syncExternalInputPresence(false);
+    }
+
+    private boolean hasExternalKeyboardOrMouse() {
+        try {
+            int[] ids = InputDevice.getDeviceIds();
+            if (ids == null) return false;
+            for (int id : ids) {
+                InputDevice device = InputDevice.getDevice(id);
+                if (device == null) continue;
+                final int sources = device.getSources();
+                // Teclado fisico de verdade: os gpio-keys internos do aparelho
+                // respondem como KEYBOARD mas nao sao alfabeticos.
+                if ((sources & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
+                        && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC
+                        && (sources & (InputDevice.SOURCE_GAMEPAD | InputDevice.SOURCE_JOYSTICK)) == 0) {
+                    return true;
+                }
+                // Mouse/trackpad externo (nao o touchscreen virtual do sistema).
+                if ((sources & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE
+                        && (sources & InputDevice.SOURCE_TOUCHSCREEN) == 0) {
+                    return true;
+                }
+                if ((sources & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE
+                        || (sources & InputDevice.SOURCE_TRACKBALL) == InputDevice.SOURCE_TRACKBALL) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    private void syncExternalInputPresence(boolean notifyNative) {
+        final boolean present = hasExternalKeyboardOrMouse();
+        mExternalInputPresent = present;
+        try {
+            KeyboardMouseBridge.nativeSetExternalInputPresent(present);
+            KeyboardMouseBridge.nativeSetEnabled(KeyboardMouseSettings.isEnabled() && present);
+        } catch (UnsatisfiedLinkError ignored) {
+        }
+        if (notifyNative && present && !mExternalInputWasPresent) {
+            runOnUiThread(() -> Toast.makeText(this,
+                    "Teclado/mouse conectado — controles PC ativos (/mob)",
+                    Toast.LENGTH_SHORT).show());
+        }
+        mExternalInputWasPresent = present;
+    }
+
+    private boolean mExternalInputPresent = false;
+    private boolean mExternalInputWasPresent = false;
+
+    /** Traduz uma tecla fisica em PcInputAction. Devolve true se consumiu. */
+    private boolean handlePcKeyEvent(KeyEvent event) {
+        if (event == null) return false;
+        if (KeyboardMouseBridge.isInterfaceVisible()) {
+            return false; // overlay de /mob trata as teclas
+        }
+
+        final int keyCode = event.getKeyCode();
+        final boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        final boolean repeat = event.getRepeatCount() > 0;
+
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+                || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
+            return false;
+        }
+
+        // 1) Entrada de texto (chat nativo aberto)
+        boolean textEntry;
+        try {
+            textEntry = KeyboardMouseBridge.nativeIsTextEntryActive();
+        } catch (UnsatisfiedLinkError e) {
+            textEntry = false;
+        }
+        if (textEntry) {
+            if (!down) return true;
+            int mapped = -1;
+            int unicode = 0;
+            if (keyCode == KeyEvent.KEYCODE_DEL) {
+                mapped = 0;
+            } else if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+                mapped = 1;
+            } else if (keyCode == KeyEvent.KEYCODE_ESCAPE) {
+                mapped = 2;
+            } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                mapped = 3;
+            } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                mapped = 4;
+            } else if (keyCode == KeyEvent.KEYCODE_TAB) {
+                mapped = 5;
+            } else {
+                unicode = event.getUnicodeChar(event.getMetaState());
+                if (unicode == 0) {
+                    return true;
+                }
+            }
+            if (repeat && mapped != 0) {
+                return true;
+            }
+            try {
+                KeyboardMouseBridge.nativeTextInputKey(mapped, unicode);
+            } catch (UnsatisfiedLinkError ignored) {
+            }
+            return true;
+        }
+
+        // 2) Acoes mapeadas em /mob
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (down && !repeat) {
+                try {
+                    KeyboardMouseBridge.nativeHandleEscape();
+                } catch (UnsatisfiedLinkError ignored) {
+                }
+                return true;
+            }
+            return true;
+        }
+
+        if (!down) {
+            final Integer held = ACTIONS_HELD.remove(keyCode);
+            if (held != null) {
+                try {
+                    KeyboardMouseBridge.nativeSetAction(held, false);
+                } catch (UnsatisfiedLinkError ignored) {
+                }
+                return true;
+            }
+        }
+
+        if (keyCode >= KeyEvent.KEYCODE_1 && keyCode <= KeyEvent.KEYCODE_9
+                && KeyboardMouseSettings.isNumberSlotKeysEnabled()) {
+            if (down && !repeat) {
+                try {
+                    KeyboardMouseBridge.nativeSelectWeaponSlot(keyCode - KeyEvent.KEYCODE_1);
+                } catch (UnsatisfiedLinkError ignored) {
+                }
+            }
+            return true;
+        }
+
+        final int action = KeyboardMouseSettings.actionForKey(keyCode);
+        if (action >= 0) {
+            if (repeat) return true;
+            if (down) {
+                ACTIONS_HELD.put(keyCode, action);
+            }
+            try {
+                KeyboardMouseBridge.nativeSetAction(action, down);
+            } catch (UnsatisfiedLinkError ignored) {
+            }
+            return true;
+        }
+
+        if (keyCode == KeyEvent.KEYCODE_ESCAPE && down && !repeat) {
+            try {
+                KeyboardMouseBridge.nativeHandleEscape();
+            } catch (UnsatisfiedLinkError ignored) {
+            }
+            return true;
+        }
+
+        for (int extra : HARDWARE_EXTRA_KEYS) {
+            if (extra == keyCode) {
+                if (!repeat) {
+                    try {
+                        onHardwareKeyEvent(keyCode, down);
+                    } catch (UnsatisfiedLinkError ignored) {
+                    }
+                }
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private final java.util.HashMap<Integer, Integer> ACTIONS_HELD = new java.util.HashMap<>();
+
+    private void releasePcActions() {
+        for (Integer action : ACTIONS_HELD.values()) {
+            try {
+                KeyboardMouseBridge.nativeSetAction(action, false);
+            } catch (UnsatisfiedLinkError ignored) {
+            }
+        }
+        ACTIONS_HELD.clear();
+        try {
+            KeyboardMouseBridge.nativeSetExternalInputPresent(mExternalInputPresent);
+        } catch (UnsatisfiedLinkError ignored) {
+        }
+    }
+
+    /** Chamado pelo JNI a partir de /mob (Game/UI/SAMPWidgets/Chat.cpp). */
+    public void showKeyboardMouseSettings() {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            // Solta a captura do ponteiro para os botoes do overlay receberem toque.
+            updatePointerCapture(false);
+            releaseMouseButtons();
+            KeyboardMouseSettings.show(this);
+        });
+    }
+
+    /** Devolve o foco ao jogo quando o overlay de /mob fecha. */
+    public void restoreGameFocus() {
+        KeyboardMouseBridge.setInterfaceVisible(false);
+        try {
+            View decor = getWindow() != null ? getWindow().getDecorView() : null;
+            if (decor != null) {
+                decor.requestFocus();
+            }
+            View mainView = GetMainView();
+            if (mainView != null) {
+                mainView.requestFocus();
+            }
+        } catch (Throwable ignored) {
+        }
+        releasePcActions();
+    }
+
     @Override
     public void onBackPressed() {
         if (inputArbiter.onBackPressed()) {
@@ -370,6 +647,9 @@ public class SAMP extends GTASA {
 
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (handlePcKeyEvent(event)) {
+            return true;
+        }
         if (inputArbiter.onDispatchKeyEvent(event)) {
             return true;
         }
@@ -392,27 +672,157 @@ public class SAMP extends GTASA {
         return super.onKeyUp(keyCode, event);
     }
 
-    /* ---------------- physical mouse ---------------- */
+    /* ---------------------------------------------------------------------
+     * Physical mouse: fiel ao handler do mobilador
+     * (rockstargames/oswrapper/view/InputHandler.java).
+     *
+     * O Android entrega o mouse por dois caminhos: eventos de hover/motion
+     * enquanto o cursor anda pela tela e, depois de requestPointerCapture(),
+     * SOMENTE onCapturedPointerEvent() com eixos relativos. Os dois precisam
+     * chegar na camera nativa, senao a camera trava assim que a captura liga.
+     * ------------------------------------------------------------------- */
 
-    private int mMouseButtonState = 0;
+    private static final int[] TRACKED_MOUSE_BUTTONS = {
+            MotionEvent.BUTTON_PRIMARY,
+            MotionEvent.BUTTON_SECONDARY,
+            MotionEvent.BUTTON_TERTIARY,
+            MotionEvent.BUTTON_BACK,
+            MotionEvent.BUTTON_FORWARD
+    };
+
+    private int mPressedMouseButtons = 0;
     private float mLastMouseX = Float.NaN;
     private float mLastMouseY = Float.NaN;
     private boolean mPointerCaptured = false;
+    private boolean mCapturedPointerListenerInstalled = false;
 
     private static boolean isMouseSource(int source) {
+        if ((source & InputDevice.SOURCE_TOUCHSCREEN) == InputDevice.SOURCE_TOUCHSCREEN
+                || (source & InputDevice.SOURCE_STYLUS) == InputDevice.SOURCE_STYLUS) {
+            return false;
+        }
         return (source & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE
-                || (source & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE;
+                || (source & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE
+                || (source & InputDevice.SOURCE_TOUCHPAD) == InputDevice.SOURCE_TOUCHPAD
+                || (source & InputDevice.SOURCE_TRACKBALL) == InputDevice.SOURCE_TRACKBALL;
+    }
+
+    private static boolean isCapturedMouseCandidate(int source) {
+        if (isMouseSource(source)) {
+            return true;
+        }
+        return (source & InputDevice.SOURCE_TOUCHSCREEN) == 0
+                && (source & InputDevice.SOURCE_STYLUS) == 0
+                && (source & InputDevice.SOURCE_GAMEPAD) == 0
+                && (source & InputDevice.SOURCE_JOYSTICK) == 0;
+    }
+
+    private static int mouseButtonToNativeIndex(int buttonMask) {
+        if (buttonMask == MotionEvent.BUTTON_PRIMARY) return 1;
+        if (buttonMask == MotionEvent.BUTTON_SECONDARY) return 2;
+        if (buttonMask == MotionEvent.BUTTON_TERTIARY) return 3;
+        if (buttonMask == MotionEvent.BUTTON_BACK) return 4;
+        if (buttonMask == MotionEvent.BUTTON_FORWARD) return 5;
+        return 0;
+    }
+
+    private static boolean isMouseButtonAction(int action) {
+        return action == MotionEvent.ACTION_BUTTON_PRESS
+                || action == MotionEvent.ACTION_BUTTON_RELEASE
+                || action == MotionEvent.ACTION_DOWN
+                || action == MotionEvent.ACTION_UP
+                || action == MotionEvent.ACTION_POINTER_DOWN
+                || action == MotionEvent.ACTION_POINTER_UP;
+    }
+
+    private static boolean isMouseButtonDownAction(int action) {
+        return action == MotionEvent.ACTION_BUTTON_PRESS
+                || action == MotionEvent.ACTION_DOWN
+                || action == MotionEvent.ACTION_POINTER_DOWN;
+    }
+
+    private int resolveMouseButton(MotionEvent event, int action) {
+        int button = event.getActionButton();
+        if (button != 0) {
+            return button;
+        }
+        final int state = event.getButtonState();
+        if (isMouseButtonDownAction(action)) {
+            final int newlyPressed = state & ~mPressedMouseButtons;
+            for (int mask : TRACKED_MOUSE_BUTTONS) {
+                if ((newlyPressed & mask) != 0) return mask;
+            }
+            for (int mask : TRACKED_MOUSE_BUTTONS) {
+                if ((state & mask) != 0) return mask;
+            }
+            return MotionEvent.BUTTON_PRIMARY;
+        } else {
+            final int releasedButton = mPressedMouseButtons & ~state;
+            for (int mask : TRACKED_MOUSE_BUTTONS) {
+                if ((releasedButton & mask) != 0) return mask;
+            }
+            for (int mask : TRACKED_MOUSE_BUTTONS) {
+                if ((mPressedMouseButtons & mask) != 0) return mask;
+            }
+            return MotionEvent.BUTTON_PRIMARY;
+        }
+    }
+
+    private boolean updatePressedMouseButtons(int buttonMask, boolean down) {
+        if (mouseButtonToNativeIndex(buttonMask) < 1) {
+            return false;
+        }
+        final boolean currentlyPressed = (mPressedMouseButtons & buttonMask) != 0;
+        if (currentlyPressed == down) {
+            return false;
+        }
+        if (down) {
+            mPressedMouseButtons |= buttonMask;
+        } else {
+            mPressedMouseButtons &= ~buttonMask;
+        }
+        return true;
+    }
+
+    private void sendMouseButton(int buttonMask, boolean down) {
+        if (!updatePressedMouseButtons(buttonMask, down)) {
+            return;
+        }
+        final int button = mouseButtonToNativeIndex(buttonMask);
+        try {
+            if (down) {
+                KeyboardMouseBridge.nativeMouseButtonDown(button,
+                        KeyboardMouseSettings.actionForMouseButton(buttonMask));
+            } else {
+                KeyboardMouseBridge.nativeMouseButtonUp(button);
+            }
+        } catch (UnsatisfiedLinkError ignored) {
+        }
+    }
+
+    private void releaseMouseButtons() {
+        final int buttons = mPressedMouseButtons;
+        mPressedMouseButtons = 0;
+        for (int mask : TRACKED_MOUSE_BUTTONS) {
+            if ((buttons & mask) != 0) {
+                try {
+                    KeyboardMouseBridge.nativeMouseButtonUp(mouseButtonToNativeIndex(mask));
+                } catch (UnsatisfiedLinkError ignored) {
+                }
+            }
+        }
     }
 
     private void updatePointerCapture(boolean wantCapture) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getWindow() == null) {
             return;
         }
-        View decor = getWindow().getDecorView();
+        final View decor = getWindow().getDecorView();
         if (decor == null) {
             return;
         }
         try {
+            installCapturedPointerListener(decor);
             if (wantCapture && !mPointerCaptured) {
                 decor.requestPointerCapture();
                 mPointerCaptured = true;
@@ -420,81 +830,181 @@ public class SAMP extends GTASA {
                 decor.releasePointerCapture();
                 mPointerCaptured = false;
             }
+            try {
+                KeyboardMouseBridge.nativeSetCapture(mPointerCaptured);
+            } catch (UnsatisfiedLinkError ignored) {
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                decor.setPointerIcon(android.view.PointerIcon.getSystemIcon(this,
+                        mPointerCaptured ? android.view.PointerIcon.TYPE_NULL
+                                : android.view.PointerIcon.TYPE_ARROW));
+            }
         } catch (Throwable ignored) {
         }
-    }
-
-    private void dispatchMouseButton(int changed, int buttons, int mask, int index) {
-        if ((changed & mask) == 0) {
-            return;
-        }
-        final boolean pressed = (buttons & mask) != 0;
-        try {
-            onMouseButton(index, pressed);
-        } catch (UnsatisfiedLinkError ignored) {
-        }
+        mLastMouseX = Float.NaN;
+        mLastMouseY = Float.NaN;
     }
 
     @Override
     public void onPointerCaptureChanged(boolean hasCapture) {
         mPointerCaptured = hasCapture;
-        if (!hasCapture) {
-            mLastMouseX = Float.NaN;
-            mLastMouseY = Float.NaN;
+        mLastMouseX = Float.NaN;
+        mLastMouseY = Float.NaN;
+        try {
+            KeyboardMouseBridge.nativeSetCapture(hasCapture);
+        } catch (UnsatisfiedLinkError ignored) {
         }
+        if (!hasCapture) {
+            releaseMouseButtons();
+        }
+    }
+
+    /**
+     * While the pointer is captured Android stops sending hover/motion events to
+     * the activity and delivers everything to the captured view, with relative
+     * axes. Activity has no onCapturedPointerEvent callback, so the decor view
+     * gets a View.OnCapturedPointerListener (API 26+). Without this the camera
+     * never receives a single delta after the capture starts.
+     */
+    private void installCapturedPointerListener(View decor) {
+        if (mCapturedPointerListenerInstalled || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+        decor.setOnCapturedPointerListener(new View.OnCapturedPointerListener() {
+            @Override
+            public boolean onCapturedPointer(View view, MotionEvent event) {
+                if (event == null || !isCapturedMouseCandidate(event.getSource())) {
+                    return false;
+                }
+                return handleMouseMotion(event, true);
+            }
+        });
+        mCapturedPointerListenerInstalled = true;
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        // Intercepta o mouse antes da view do jogo para o evento nunca ser engolido.
+        if (event != null && isMouseSource(event.getSource())) {
+            return handleMouseMotion(event, false);
+        }
+        return super.dispatchGenericMotionEvent(event);
     }
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
-        if (!isMouseSource(event.getSource()) || ui == null) {
-            return super.onGenericMotionEvent(event);
+        if (event != null && isMouseSource(event.getSource())) {
+            return handleMouseMotion(event, false);
+        }
+        return super.onGenericMotionEvent(event);
+    }
+
+    private boolean isPcInterfaceBusy() {
+        if (KeyboardMouseBridge.isInterfaceVisible()) {
+            return true;
+        }
+        try {
+            return KeyboardMouseBridge.nativeIsInterfaceActive()
+                    || KeyboardMouseBridge.nativeIsTextEntryActive();
+        } catch (UnsatisfiedLinkError e) {
+            return false;
+        }
+    }
+
+    private boolean handleMouseMotion(MotionEvent event, boolean capturedEvent) {
+        // Chat / IME / Java dialog owns the mouse: do not spin the camera.
+        if (ui != null && ui.isInputFocused()) {
+            return true;
+        }
+        // Overlay de /mob, chat aberto ou placar: o mouse pertence a interface.
+        if (isPcInterfaceBusy()) {
+            return true;
         }
 
-        if (event.getActionMasked() == MotionEvent.ACTION_SCROLL) {
-            float wheel = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
+        final int action = event.getActionMasked();
+        final int source = event.getSource();
+
+        if (action == MotionEvent.ACTION_HOVER_ENTER || action == MotionEvent.ACTION_HOVER_EXIT) {
+            mLastMouseX = Float.NaN;
+            mLastMouseY = Float.NaN;
+            return true;
+        }
+
+        if (isMouseButtonAction(action)) {
+            sendMouseButton(resolveMouseButton(event, action), isMouseButtonDownAction(action));
+            if (!capturedEvent && !mPointerCaptured) {
+                updatePointerCapture(true);
+            }
+            return true;
+        }
+
+        if (action == MotionEvent.ACTION_CANCEL) {
+            releaseMouseButtons();
+            mLastMouseX = Float.NaN;
+            mLastMouseY = Float.NaN;
+            return true;
+        }
+
+        if (action == MotionEvent.ACTION_SCROLL) {
+            final float wheel = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
             if (wheel != 0.0f) {
                 try {
-                    onMouseWheel(wheel > 0.0f ? 1 : -1);
+                    KeyboardMouseBridge.nativeMouseWheel(wheel > 0.0f ? 1 : -1);
                 } catch (UnsatisfiedLinkError ignored) {
                 }
             }
             return true;
         }
 
-        updatePointerCapture(true);
+        if (action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_MOVE) {
+            float dx = 0.0f;
+            float dy = 0.0f;
+            final boolean hasRelativeSource =
+                    (source & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE;
 
-        final int buttons = event.getButtonState();
-        if (buttons != mMouseButtonState) {
-            final int changed = buttons ^ mMouseButtonState;
-            dispatchMouseButton(changed, buttons, MotionEvent.BUTTON_PRIMARY, 1);
-            dispatchMouseButton(changed, buttons, MotionEvent.BUTTON_SECONDARY, 2);
-            dispatchMouseButton(changed, buttons, MotionEvent.BUTTON_TERTIARY, 3);
-            mMouseButtonState = buttons;
-        }
-
-        float dx = 0.0f;
-        float dy = 0.0f;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
-            dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
-        }
-        if (dx == 0.0f && dy == 0.0f) {
-            final float x = event.getX();
-            final float y = event.getY();
-            if (!Float.isNaN(mLastMouseX)) {
-                dx = x - mLastMouseX;
-                dy = y - mLastMouseY;
+            if (capturedEvent || hasRelativeSource) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
+                    dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
+                }
+                if (dx == 0.0f && dy == 0.0f) {
+                    final float rx = event.getX();
+                    final float ry = event.getY();
+                    if (!capturedEvent && !Float.isNaN(mLastMouseX)) {
+                        dx = rx - mLastMouseX;
+                        dy = ry - mLastMouseY;
+                    }
+                    mLastMouseX = rx;
+                    mLastMouseY = ry;
+                }
+            } else {
+                final float x = event.getX();
+                final float y = event.getY();
+                if (!Float.isNaN(mLastMouseX)) {
+                    dx = x - mLastMouseX;
+                    dy = y - mLastMouseY;
+                }
+                mLastMouseX = x;
+                mLastMouseY = y;
             }
-            mLastMouseX = x;
-            mLastMouseY = y;
+
+            if (!Float.isFinite(dx)) dx = 0.0f;
+            if (!Float.isFinite(dy)) dy = 0.0f;
+
+            if (dx != 0.0f || dy != 0.0f) {
+                try {
+                    KeyboardMouseBridge.nativeMouseMove(
+                            KeyboardMouseSettings.scaleMouseX(dx),
+                            KeyboardMouseSettings.scaleMouseY(dy));
+                } catch (UnsatisfiedLinkError ignored) {
+                }
+                if (!capturedEvent && !mPointerCaptured) {
+                    updatePointerCapture(true);
+                }
+            }
+            return true;
         }
 
-        if (dx != 0.0f || dy != 0.0f) {
-            try {
-                onMouseDelta(dx, dy);
-            } catch (UnsatisfiedLinkError ignored) {
-            }
-        }
         return true;
     }
 
@@ -581,6 +1091,7 @@ public class SAMP extends GTASA {
         if (ui != null) {
             ui.onResumeEvent();
         }
+        syncExternalInputPresence(false);
     }
 
     @Override
@@ -588,6 +1099,9 @@ public class SAMP extends GTASA {
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus) {
             inputArbiter.onWindowFocusLost();
+            releaseMouseButtons();
+            mLastMouseX = Float.NaN;
+            mLastMouseY = Float.NaN;
         }
     }
 
@@ -595,11 +1109,12 @@ public class SAMP extends GTASA {
     public void onPause() {
         Log.i(TAG, "**** onPause");
         inputArbiter.onActivityPause();
+        releaseMouseButtons();
+        releasePcActions();
         try {
             onMouseReset();
         } catch (UnsatisfiedLinkError ignored) {
         }
-        mMouseButtonState = 0;
         mLastMouseX = Float.NaN;
         mLastMouseY = Float.NaN;
         updatePointerCapture(false);

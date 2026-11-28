@@ -28,6 +28,7 @@
 #include "Game/PlayerPed.h"
 #include "Game/Patches.h"
 #include "Game/Hooks.h"
+#include "Game/PcInput.h"
 #include "Game/Util.h"
 #include "Game/SnapShotHelper.h"
 #include "Game/MaterialTextGenerator.h"
@@ -581,6 +582,10 @@ void Client::process(bool canRender2d)
 
 	// Drain queued JNI inputs (keyboard chat, dialog responses, hardware keys) on GameMain.
 	Java::processPendingInputs();
+
+	// Porte do teclado/mouse PC: fecha o latch de acoes deste frame antes de
+	// qualquer leitura de CPad (mesma ordem do mobilador).
+	PcInputBeginFrame();
 
 	// omp-cef compatible browser + transport. Kept outside the pNetGame check so
 	// the debug direct-connect path (tools/cef_kat/run_browser_test.sh) works in

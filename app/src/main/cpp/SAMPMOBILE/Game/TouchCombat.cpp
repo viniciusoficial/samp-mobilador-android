@@ -3,6 +3,7 @@
 #include "Game.h"
 #include "Pad.h"
 #include "PadInternal.h"
+#include "PcInput.h"
 #include "PlayerPed.h"
 #include "TouchWidgets.h"
 #include "Util.h"
@@ -37,6 +38,24 @@ bool ConsumePassengerDriveByToggle()
 }
 
 TouchCombatState g_touchCombat{};
+
+// Mouse/teclado PC (PcInput). O sampler de toque reescreve fireDown a cada
+// frame, entao o estado externo entra como OR no mesmo ponto.
+static std::atomic<bool> g_pcFireDown{false};
+static std::atomic<bool> g_pcFireJustPressed{false};
+static std::atomic<bool> g_pcAimDown{false};
+
+void TouchCombatSetExternalFire(bool down, bool justPressed)
+{
+	g_pcFireDown.store(down, std::memory_order_release);
+	if (justPressed)
+		g_pcFireJustPressed.store(true, std::memory_order_release);
+}
+
+void TouchCombatSetExternalAim(bool down)
+{
+	g_pcAimDown.store(down, std::memory_order_release);
+}
 
 
 bool IsLocalMeleeComboActive()
@@ -487,6 +506,42 @@ void UpdateTouchCombatVisuals()
 	uintptr_t* widgets = GetTouchWidgets();
 	if (!widgets) return;
 
+	// Igual ao mobilador: teclado/mouse conectado => nenhum widget de toque na tela.
+	constexpr int32_t kWidgetCount = static_cast<int32_t>(sa::WidgetIDs::NUM_WIDGETS);
+	static bool s_pcWidgetsHidden = false;
+	static uint8_t s_savedEnabled[kWidgetCount] = {};
+	static uint8_t s_savedAlpha[kWidgetCount] = {};
+
+	if (PcInputIsEnabledForTouch()) {
+		if (!s_pcWidgetsHidden) {
+			for (int32_t id = 0; id < kWidgetCount; ++id) {
+				uintptr_t w = widgets[id];
+				if (!w) continue;
+				s_savedEnabled[id] = *reinterpret_cast<uint8_t*>(w + kWidgetEnabledOffset);
+				s_savedAlpha[id] = *reinterpret_cast<uint8_t*>(w + kWidgetAlphaOffset);
+			}
+			s_pcWidgetsHidden = true;
+		}
+		for (int32_t id = 0; id < kWidgetCount; ++id) {
+			uintptr_t w = widgets[id];
+			if (!w) continue;
+			*reinterpret_cast<uint8_t*>(w + kWidgetEnabledOffset) = 0;
+			*reinterpret_cast<uint8_t*>(w + kWidgetAlphaOffset) = 0;
+		}
+		return;
+	}
+
+	// Teclado/mouse desconectado: devolve os widgets ao estado que tinham antes.
+	if (s_pcWidgetsHidden) {
+		for (int32_t id = 0; id < kWidgetCount; ++id) {
+			uintptr_t w = widgets[id];
+			if (!w) continue;
+			*reinterpret_cast<uint8_t*>(w + kWidgetEnabledOffset) = s_savedEnabled[id];
+			*reinterpret_cast<uint8_t*>(w + kWidgetAlphaOffset) = s_savedAlpha[id];
+		}
+		s_pcWidgetsHidden = false;
+	}
+
 	FixTouchWidgetLayout();
 
 	CPlayerPed* pLocal = pGame ? pGame->FindPlayerPed() : nullptr;
@@ -559,6 +614,30 @@ void UpdateTouchCombatVisuals()
 // zero-lag state.
 static void TickTouchCombatInput()
 {
+	// Modo teclado/mouse: os widgets touch nao sao mais fonte de input; apenas
+	// o pipeline PC (PcInput) alimenta FIRE/AIM/BLOCK.
+	if (PcInputIsEnabledForTouch()) {
+		LocalPlayerKeys.wKeyLR = 0;
+		LocalPlayerKeys.wKeyUD = 0;
+		g_touchCombat.onFootStickSampled = false;
+		g_touchCombat.stickTouched = false;
+		g_touchCombat.stickLR = 0;
+		g_touchCombat.stickUD = 0;
+		g_touchCombat.blockDown = false;
+
+		const bool pcFire = g_pcFireDown.load(std::memory_order_acquire);
+		g_touchCombat.fireJustPressed = pcFire && !g_touchCombat.firePrevDown;
+		if (g_pcFireJustPressed.exchange(false, std::memory_order_acq_rel))
+			g_touchCombat.fireJustPressed = true;
+		g_touchCombat.firePrevDown = pcFire;
+		g_touchCombat.fireDown = pcFire;
+		if (g_touchCombat.fireJustPressed)
+			g_touchCombat.fireDownTickMs = GetTickCount();
+
+		g_touchCombat.aimLatch = g_pcAimDown.load(std::memory_order_acquire);
+		return;
+	}
+
 	// Reset analog axes and per-frame stick state each logic frame so tasks that
 	// bypass CPad::GetPedWalk* never broadcast stale non-zero lr/ud.
 	LocalPlayerKeys.wKeyLR = 0;
@@ -589,7 +668,10 @@ static void TickTouchCombatInput()
 	// 1) Fire button edge + hold tracking (on foot & passenger drive-by)
 	const bool bFirePrev = g_touchCombat.firePrevDown;
 	bool bFireNow = (bOnFoot || bPassengerDriveBy) && PollTouchDown(sa::WidgetIDs::WIDGET_ATTACK);
+	bFireNow = bFireNow || g_pcFireDown.load(std::memory_order_acquire);
 	g_touchCombat.fireJustPressed = bFireNow && !bFirePrev;
+	if (g_pcFireJustPressed.exchange(false, std::memory_order_acq_rel))
+		g_touchCombat.fireJustPressed = true;
 	if (g_touchCombat.fireJustPressed) {
 		g_touchCombat.fireDownTickMs = GetTickCount();
 		if (bOnFoot && pLocal && pLocal->GetStuff() != STUFF_TYPE_NONE) {
@@ -613,6 +695,10 @@ static void TickTouchCombatInput()
 
 	// 2) Aim-toggle & scoped camera mode state machine (runs BEFORE stick & key
 	// sampling so entering/exiting 1st-person scope takes effect with 0-frame lag).
+	if (PcInputIsEnabledForTouch() &&
+		g_pcAimDown.load(std::memory_order_acquire) != g_touchCombat.aimLatch) {
+		g_touchCombat.aimLatch = g_pcAimDown.load(std::memory_order_acquire);
+	}
 	if (CPlayerPed* pAimPed = GetAimableLocalPed()) {
 		const uint8_t curAimWep = pAimPed->GetCurrentWeapon();
 		if (g_touchCombat.lastAimWeapon != curAimWep) {

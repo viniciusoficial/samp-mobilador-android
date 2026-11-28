@@ -1,4 +1,5 @@
 #include "NativeCameraMouse.h"
+#include "PcInput.h"
 
 #include "Pad.h"
 #include "Util.h"
@@ -178,7 +179,9 @@ namespace
 
 	bool IsMouseCameraActive()
 	{
-		return Settings::kmEnabled() && g_mouseDrivenSession.load(std::memory_order_acquire);
+		// Porte do mobilador: a camera do mouse so age quando o sistema PC esta
+		// ativo (teclado/mouse externo presente, igual ao native_camera_mouse.cpp).
+		return PcInputIsEnabledForTouch() && g_mouseDrivenSession.load(std::memory_order_acquire);
 	}
 
 	void InitAnglesFromCam(const sa::CCam* cam, bool aimMode)
@@ -325,16 +328,15 @@ namespace
 
 	void ApplyMouseButtons()
 	{
-		// Same three mappings as the mobilador (LMB fire / RMB aim+handbrake /
-		// MMB submission), written on the engine's own pad key table
-		// (Game/Pad.h) and re-pinned every frame by NativeCameraMouseApplyKeys().
+		// Os botoes do mouse agora sao resolvidos por Game/PcInput.cpp
+		// (PcInputSetMouseButton -> PcInputAction FIRE/AIM/LOOK_BEHIND), exatamente
+		// como no mobilador. Aqui nao escrevemos mais nas teclas do pad para nao
+		// mapear duas vezes o mesmo botao.
 		static bool fireOwned = false;
 		static bool submissionOwned = false;
 		static int rmbKey = -1;
 
-		const uint8_t desired = Settings::kmEnabled()
-				? g_buttonMask.load(std::memory_order_acquire)
-				: static_cast<uint8_t>(0);
+		const uint8_t desired = static_cast<uint8_t>(0);
 
 		if (desired & 0x1) {
 			fireOwned = true;

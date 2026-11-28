@@ -1,6 +1,7 @@
 #include "Pad.h"
 #include "Patches.h"
 #include "Game.h"
+#include "PcInput.h"
 #include "Common.h"
 #include "Hooks.h"
 #include "PadInternal.h"
@@ -207,6 +208,13 @@ DECL_HOOK(int16_t, CPad_GetPedWalkLeftRight, uintptr_t _this)
 		if (lr == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldLR() != 0) {
 			lr = static_cast<int16_t>(pUI->buttonpanel()->heldLR());
 		}
+		// Teclado (A/D) do sistema PC: tem prioridade sobre o stick/campo touch.
+		if (PcInputIsPressed(PcInputAction::MOVE_LEFT) != PcInputIsPressed(PcInputAction::MOVE_RIGHT)) {
+			const bool walking = PcInputIsPressed(PcInputAction::WALK);
+			lr = static_cast<int16_t>(PcInputIsPressed(PcInputAction::MOVE_LEFT)
+				? (walking ? -32 : -128) : (walking ? 32 : 128));
+		}
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_WALK] = PcInputIsPressed(PcInputAction::WALK);
 		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
 		return lr;
 	}
@@ -233,6 +241,13 @@ DECL_HOOK(int16_t, CPad_GetPedWalkUpDown, uintptr_t _this)
 		if (ud == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldUD() != 0) {
 			ud = static_cast<int16_t>(pUI->buttonpanel()->heldUD());
 		}
+		// Teclado (W/S) do sistema PC: tem prioridade sobre o stick/campo touch.
+		if (PcInputIsPressed(PcInputAction::MOVE_FORWARD) != PcInputIsPressed(PcInputAction::MOVE_BACKWARD)) {
+			const bool walking = PcInputIsPressed(PcInputAction::WALK);
+			ud = static_cast<int16_t>(PcInputIsPressed(PcInputAction::MOVE_FORWARD)
+				? (walking ? -32 : -128) : (walking ? 32 : 128));
+		}
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_WALK] = PcInputIsPressed(PcInputAction::WALK);
 		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
 		return ud;
 	}
@@ -449,8 +464,10 @@ DECL_HOOK(uint16_t, CPad_JumpJustDown, uintptr_t _this)
 			}
 		}
 		const uint16_t jumpDown = CPad_JumpJustDown(_this);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (jumpDown != 0);
-		return jumpDown;
+		const bool pcJump = PcInputIsPressed(PcInputAction::JUMP);
+		const bool pcJumpEdge = PcInputConsumePress(PcInputAction::JUMP);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (jumpDown != 0) || pcJump;
+		return (jumpDown != 0) || pcJumpEdge;
 	}
 }
 DECL_HOOK(uint16_t, CPad_GetJump, uintptr_t _this)
@@ -468,7 +485,7 @@ DECL_HOOK(uint16_t, CPad_GetJump, uintptr_t _this)
 				return 0;
 			}
 		}
-		const uint16_t jumpHeld = CPad_GetJump(_this);
+		const uint16_t jumpHeld = CPad_GetJump(_this) || PcInputIsPressed(PcInputAction::JUMP);
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (jumpHeld != 0);
 		return jumpHeld;
 	}
@@ -579,7 +596,8 @@ DECL_HOOK(uint32_t, CPad_GetSprint, uintptr_t _this, uint32_t unk)
 				return 0;
 			}
 		}
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = CPad_GetSprint(_this, unk);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = CPad_GetSprint(_this, unk) ||
+			(PcInputIsPressed(PcInputAction::SPRINT) && !PcInputIsPressed(PcInputAction::WALK));
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT];
 	}
 }
@@ -593,7 +611,7 @@ DECL_HOOK(uint32_t, CPad_GetAutoClimb, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_JUMP];
 	}
 	else {
-		const uint32_t climb = CPad_GetAutoClimb(_this);
+		const uint32_t climb = CPad_GetAutoClimb(_this) || PcInputIsPressed(PcInputAction::JUMP);
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (climb != 0);
 		return climb;
 	}
@@ -619,7 +637,7 @@ DECL_HOOK(uint32_t, CPad_DiveJustDown, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_FIRE];
 	}
 	else {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad_DiveJustDown(_this);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad_DiveJustDown(_this) || PcInputIsPressed(PcInputAction::FIRE);
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
 	}
 }
@@ -630,7 +648,7 @@ DECL_HOOK(uint32_t, CPad_SwimJumpJustDown, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_JUMP];
 	}
 	else {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad_SwimJumpJustDown(_this);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad_SwimJumpJustDown(_this) || PcInputIsPressed(PcInputAction::JUMP);
 		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
 	}
 }
@@ -688,6 +706,13 @@ DECL_HOOK(int16_t, CPad_GetSteeringLeftRight, uintptr_t _this)
 		if (lr == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldLR() != 0) {
 			lr = static_cast<int16_t>(pUI->buttonpanel()->heldLR());
 		}
+		// Teclado (A/D) do sistema PC: tem prioridade sobre o stick/campo touch.
+		if (PcInputIsPressed(PcInputAction::MOVE_LEFT) != PcInputIsPressed(PcInputAction::MOVE_RIGHT)) {
+			const bool walking = PcInputIsPressed(PcInputAction::WALK);
+			lr = static_cast<int16_t>(PcInputIsPressed(PcInputAction::MOVE_LEFT)
+				? (walking ? -32 : -128) : (walking ? 32 : 128));
+		}
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_WALK] = PcInputIsPressed(PcInputAction::WALK);
 		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
 		return lr;
 	}
@@ -708,6 +733,13 @@ DECL_HOOK(int16_t, CPad_GetSteeringUpDown, uintptr_t _this)
 		if (ud == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldUD() != 0) {
 			ud = static_cast<int16_t>(pUI->buttonpanel()->heldUD());
 		}
+		// Teclado (W/S) do sistema PC: tem prioridade sobre o stick/campo touch.
+		if (PcInputIsPressed(PcInputAction::MOVE_FORWARD) != PcInputIsPressed(PcInputAction::MOVE_BACKWARD)) {
+			const bool walking = PcInputIsPressed(PcInputAction::WALK);
+			ud = static_cast<int16_t>(PcInputIsPressed(PcInputAction::MOVE_FORWARD)
+				? (walking ? -32 : -128) : (walking ? 32 : 128));
+		}
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_WALK] = PcInputIsPressed(PcInputAction::WALK);
 		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
 		return ud;
 	}
@@ -720,6 +752,8 @@ DECL_HOOK(uint16_t, CPad_GetAccelerate, uintptr_t _this)
 	}
 	else {
 		uint16_t wResult = CPad_GetAccelerate(_this);
+		if (PcInputIsPressed(PcInputAction::MOVE_FORWARD))
+			wResult = 0xFF;
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = wResult;
 		sa::CPed* local = GamePool_FindPlayerPed();
 		sa::CVehicle* pVehicle = local ? local->pVehicle : nullptr;
@@ -737,6 +771,8 @@ DECL_HOOK(uint16_t, CPad_GetBrake, uintptr_t _this)
 	}
 	else {
 		uint16_t wResult = CPad_GetBrake(_this);
+		if (PcInputIsPressed(PcInputAction::MOVE_BACKWARD))
+			wResult = 0xFF;
 		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = wResult;
 		sa::CPed* local = GamePool_FindPlayerPed();
 		sa::CVehicle* pVehicle = local ? local->pVehicle : nullptr;
@@ -1001,6 +1037,8 @@ DECL_HOOK(bool, CPad_CycleWeaponLeftJustDown, uintptr_t _this)
 		return false;
 	}
 	else {
+		if (PcInputConsumeWeaponWheel(-1))
+			return true;
 		return CPad_CycleWeaponLeftJustDown(_this);
 	}
 }
@@ -1011,6 +1049,8 @@ DECL_HOOK(uint32_t, CPad_CycleWeaponRightJustDown, uintptr_t _this)
 		return 0;
 	}
 	else {
+		if (PcInputConsumeWeaponWheel(1))
+			return 1;
 		return CPad_CycleWeaponRightJustDown(_this);
 	}
 }

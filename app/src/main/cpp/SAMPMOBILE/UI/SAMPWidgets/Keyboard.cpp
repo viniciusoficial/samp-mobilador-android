@@ -200,6 +200,12 @@ void KeyboardInput::addCharToInput(char value)
 	m_caption = Encoding::cp2utf(m_input);
 }
 
+void KeyboardInput::addTextToInput(const std::string& value)
+{
+	m_input += value;
+	m_caption = Encoding::cp2utf(m_input);
+}
+
 void KeyboardInput::popCharFromInput()
 {
 	if (m_input.empty()) return;

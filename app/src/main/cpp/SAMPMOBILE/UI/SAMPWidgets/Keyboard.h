@@ -18,6 +18,7 @@ public:
 	}
 
 	void addCharToInput(char value);
+	void addTextToInput(const std::string& value);
 	void popCharFromInput();
 
 	void setInputString(const std::string& string)

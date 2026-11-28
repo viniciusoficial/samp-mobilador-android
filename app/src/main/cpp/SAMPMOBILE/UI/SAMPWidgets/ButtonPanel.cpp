@@ -1,4 +1,5 @@
 #include "ButtonPanel.h"
+#include "../../Game/PcInput.h"
 #include "Chat.h"
 #include "Keyboard.h"
 #include "NetStats.h"
@@ -457,291 +458,54 @@ void ButtonPanel::applyHeldKeys()
 
 void ButtonPanel::draw(ImGuiRenderer* renderer)
 {
+	// Igual ao mobilador: com teclado/mouse conectado o painel touch some.
+	const bool pcInput = PcInputIsEnabledForTouch();
+	if (pcInput != m_pcInputHidden) {
+		m_pcInputHidden = pcInput;
+		setVisible(!pcInput);
+	}
+	if (pcInput) {
+		return;
+	}
+
 	applyHeldKeys();
 	Widget::draw(renderer);
 }
 
 void ButtonPanel::handleHardwareKey(int androidKeyCode, bool isDown)
 {
-	if (!Settings::kmEnabled()) {
-		if (!isDown) {
-			clearHeldKeys();
-		}
-		return;
-	}
-	if (!pUI || !pGame) return;
-
-	// If in-game ImGui keyboard is open, still process key-up releases so held WASD/fire
-	// never latches across modal focus transitions; block new key-down actions except ESC.
-	if (isDown && pUI->keyboard() && pUI->keyboard()->visible()) {
-		if (androidKeyCode == 111 /* KEYCODE_ESCAPE */) {
-			pUI->keyboard()->hide();
-		}
-		return;
-	}
-
-	// If a SA-MP Menu is open, allow keyboard navigation (Up/Down/Enter/Space/F/ESC)
-	if (isDown && pNetGame && pNetGame->GetMenuPool() && pNetGame->GetMenuPool()->IsVisible()) {
-		if (androidKeyCode == 19 || androidKeyCode == 51) { // DPAD_UP / W
-			pNetGame->GetMenuPool()->MoveSelection(-1);
-			return;
-		}
-		if (androidKeyCode == 20 || androidKeyCode == 47) { // DPAD_DOWN / S
-			pNetGame->GetMenuPool()->MoveSelection(1);
-			return;
-		}
-		if (androidKeyCode == 66 || androidKeyCode == 62) { // ENTER / SPACE
-			pNetGame->GetMenuPool()->SelectCurrentRow();
-			return;
-		}
-		if (androidKeyCode == 34 || androidKeyCode == 111) { // F / ESC
-			pNetGame->GetMenuPool()->ExitMenu();
-			return;
-		}
-	}
-
-	CPlayerPed* pPed = pGame->FindPlayerPed();
-	bool inVeh = (pPed && pPed->IsInVehicle());
+	// O teclado/mouse agora e o sistema do mobilador (Game/PcInput.cpp): WASD,
+	// acoes, camera, chat e placar passam por PcInputAction. Aqui ficam apenas
+	// os atalhos de depuracao que nao existem no SA:MP PC.
+	if (!isDown || !pUI || !pGame) return;
 
 	switch (androidKeyCode) {
 		case 48:  // KEYCODE_T
 		case 136: // KEYCODE_F6
-			if (isDown) {
-				clearHeldKeys();
-				if (Settings::systemkeyboard()) {
-					if (g_java) g_java->showKeyboard(true);
-				}
-				else if (pUI->keyboard() && pUI->chat()) {
-					pUI->keyboard()->show(pUI->chat());
-				}
-			}
-			break;
-
-		case 61: // KEYCODE_TAB
-			if (isDown) {
-				if (pUI->scoreboard()) {
-					pUI->scoreboard()->setVisible(!pUI->scoreboard()->visible());
-				}
-				if (!inVeh) {
-					LocalPlayerKeys.bKeys[ePadKeys::KEY_ACTION] = true;
-				}
+			if (Settings::systemkeyboard()) {
+				if (g_java) g_java->showKeyboard(true);
 			}
 			break;
 
 		case 135: // KEYCODE_F5
-			if (isDown && pUI->netstats()) {
+			if (pUI->netstats()) {
 				pUI->netstats()->setClientStatsVisible(!pUI->netstats()->clientStatsVisible());
 			}
 			break;
 
 		case 137: // KEYCODE_F7
-			if (isDown && pUI->chat()) {
+			if (pUI->chat()) {
 				pUI->chat()->setVisible(!pUI->chat()->visible());
 			}
 			break;
 
 		case 138: // KEYCODE_F8
-			if (isDown) {
-				Hooks::requestScreenshot(-1);
-			}
+			Hooks::requestScreenshot(-1);
 			break;
 
 		case 140: // KEYCODE_F10
-			if (isDown && pUI->netstats()) {
+			if (pUI->netstats()) {
 				pUI->netstats()->setServerStatsVisible(!pUI->netstats()->serverStatsVisible());
-			}
-			break;
-
-		case 111: // KEYCODE_ESCAPE
-			if (isDown) {
-				InputArbiter::dismissTopNativeModal();
-			}
-			break;
-
-		case 35: // KEYCODE_G
-			if (isDown && pNetGame && pNetGame->GetPlayerPool() && pNetGame->GetPlayerPool()->GetLocalPlayer()) {
-				pNetGame->GetPlayerPool()->GetLocalPlayer()->EnterVehicleAsPassenger();
-			}
-			break;
-
-		case 34: // KEYCODE_F
-		case 66: // KEYCODE_ENTER
-			if (isDown) {
-				LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = true;
-			}
-			break;
-
-		case 53: // KEYCODE_Y
-			if (isDown) {
-				LocalPlayerKeys.bKeys[ePadKeys::KEY_YES] = true;
-			}
-			break;
-
-		case 42: // KEYCODE_N
-			if (isDown) {
-				LocalPlayerKeys.bKeys[ePadKeys::KEY_NO] = true;
-			}
-			break;
-
-		case 36: // KEYCODE_H
-			if (isDown) {
-				if (inVeh && pPed && !pPed->IsAPassenger()) {
-					LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = true;
-				}
-				else {
-					LocalPlayerKeys.bKeys[ePadKeys::KEY_CTRL_BACK] = true;
-				}
-			}
-			break;
-
-		case 31: // KEYCODE_C
-			if (inVeh) {
-				if (isDown) {
-					LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = true;
-				}
-			}
-			else {
-				NotifyLocalHardwareCrouchKey(isDown);
-			}
-			break;
-
-		case 9: // KEYCODE_2
-			if (isDown) {
-				LocalPlayerKeys.bKeys[ePadKeys::KEY_SUBMISSION] = true;
-				if (inVeh && pPed && !pPed->IsAPassenger()) {
-					sa::CVehicle* pVeh = pPed->GetGtaVehicle();
-					if (pVeh && GetVehicleSubtype(pVeh) == VEHICLE_SUBTYPE_PLANE) {
-						RequestLocalPlaneGearToggle();
-					}
-				}
-			}
-			break;
-
-		case 45: // KEYCODE_Q
-			m_heldBKeys[ePadKeys::KEY_LOOK_LEFT] = isDown;
-			if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_LEFT] = false;
-			break;
-
-		case 33: // KEYCODE_E
-			m_heldBKeys[ePadKeys::KEY_LOOK_RIGHT] = isDown;
-			if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_RIGHT] = false;
-			break;
-
-		case 57: // KEYCODE_ALT_LEFT
-		case 58: // KEYCODE_ALT_RIGHT
-			if (inVeh) {
-				m_heldBKeys[ePadKeys::KEY_FIRE] = isDown;
-				if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = false;
-			}
-			else {
-				m_heldBKeys[ePadKeys::KEY_WALK] = isDown;
-				if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_WALK] = false;
-			}
-			break;
-
-		case 113: // KEYCODE_CTRL_LEFT
-		case 114: // KEYCODE_CTRL_RIGHT
-			m_heldBKeys[ePadKeys::KEY_FIRE] = isDown;
-			if (!isDown) {
-				LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = false;
-			}
-			else if (pNetGame) {
-				pNetGame->SendSpawn();
-			}
-			break;
-
-		case 62: // KEYCODE_SPACE
-		case 59: // KEYCODE_SHIFT_LEFT
-		case 60: // KEYCODE_SHIFT_RIGHT
-			if (inVeh) {
-				m_heldBKeys[ePadKeys::KEY_HANDBRAKE] = isDown;
-				if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = false;
-			}
-			else {
-				m_heldBKeys[ePadKeys::KEY_SPRINT] = isDown;
-				if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = false;
-			}
-			break;
-
-		case 51: // KEYCODE_W
-			m_hwW = isDown;
-			recomputeHeldAxes();
-			break;
-		case 19: // KEYCODE_DPAD_UP
-			m_hwDpadUp = isDown;
-			recomputeHeldAxes();
-			break;
-
-		case 47: // KEYCODE_S
-			m_hwS = isDown;
-			recomputeHeldAxes();
-			break;
-		case 20: // KEYCODE_DPAD_DOWN
-			m_hwDpadDown = isDown;
-			recomputeHeldAxes();
-			break;
-
-		case 29: // KEYCODE_A
-			m_hwA = isDown;
-			recomputeHeldAxes();
-			if (isDown && pNetGame) {
-				pNetGame->SendPrevClass();
-			}
-			break;
-		case 21: // KEYCODE_DPAD_LEFT
-			m_hwDpadLeft = isDown;
-			recomputeHeldAxes();
-			if (isDown && pNetGame) {
-				pNetGame->SendPrevClass();
-			}
-			break;
-
-		case 32: // KEYCODE_D
-			m_hwD = isDown;
-			recomputeHeldAxes();
-			if (isDown && pNetGame) {
-				pNetGame->SendNextClass();
-			}
-			break;
-		case 22: // KEYCODE_DPAD_RIGHT
-			m_hwDpadRight = isDown;
-			recomputeHeldAxes();
-			if (isDown && pNetGame) {
-				pNetGame->SendNextClass();
-			}
-			break;
-
-		case 152: // KEYCODE_NUMPAD_8
-			m_heldBKeys[ePadKeys::KEY_ANALOG_UP] = isDown;
-			if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_UP] = false;
-			break;
-
-		case 146: // KEYCODE_NUMPAD_2
-			m_heldBKeys[ePadKeys::KEY_ANALOG_DOWN] = isDown;
-			if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_DOWN] = false;
-			break;
-
-		case 148: // KEYCODE_NUMPAD_4
-			m_heldBKeys[ePadKeys::KEY_ANALOG_LEFT] = isDown;
-			if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_LEFT] = false;
-			break;
-
-		case 150: // KEYCODE_NUMPAD_6
-			m_heldBKeys[ePadKeys::KEY_ANALOG_RIGHT] = isDown;
-			if (!isDown) LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_RIGHT] = false;
-			break;
-
-		case 30: // KEYCODE_B
-		case 50: // KEYCODE_V
-			if (pUI->voicebutton() && Settings::voice() && Settings::voiceMicEnable()) {
-				if (Settings::voiceMicMode() == 1) {
-					if (isDown) {
-						pUI->voicebutton()->setRecording(!pUI->voicebutton()->recording());
-					}
-				}
-				else {
-					pUI->voicebutton()->setRecording(isDown);
-				}
 			}
 			break;
 

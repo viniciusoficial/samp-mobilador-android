@@ -166,6 +166,20 @@ void Chat::keyboardEvent(const std::string& input)
 {
 	if (input.empty()) return;
 
+	// /mob abre as configuracoes de teclado/mouse (igual ao mobilador).
+	{
+		std::string lower = input;
+		for (char& c : lower) {
+			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		}
+		if (lower == "/mob" || lower == "/mob " || lower.rfind("/mob ", 0) == 0) {
+			if (g_java) {
+				g_java->showKeyboardMouseSettings();
+			}
+			return;
+		}
+	}
+
 	if (input[0] == '/') {
 		std::string cmd_name;
 		std::string cmd_param;

@@ -8,3 +8,8 @@ void ApplyLocalCombatSyncKeys(uint16_t& wKeys, uint16_t& lrAnalog, uint16_t& udA
 bool ConsumeStuffUseRequest();
 bool ConsumePassengerDriveByToggle();
 void InstallTouchCombatHooks();
+
+// Entrada de mouse/teclado PC (PcInput): atirar e mirar entram no mesmo
+// pipeline de combate usado pelos widgets de toque.
+void TouchCombatSetExternalFire(bool down, bool justPressed);
+void TouchCombatSetExternalAim(bool down);

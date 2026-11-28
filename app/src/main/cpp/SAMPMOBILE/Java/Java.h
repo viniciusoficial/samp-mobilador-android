@@ -22,6 +22,8 @@ public:
 
 	void showLoadingScreen(bool show);
 	void showKeyboard(bool show);
+	// Abre o overlay de configuracoes de teclado/mouse (comando /mob).
+	void showKeyboardMouseSettings();
 	void showDialog(int dialog_id, int dialog_style, char* title, char* message, char* button1, char* button2);
 	void hideDialog();
 	void showEditObject(bool show);
@@ -49,6 +51,7 @@ private:
 
 	jmethodID m_showLoadingScreen = nullptr;
 	jmethodID m_showKeyboard = nullptr;
+	jmethodID m_showKbMouseSettings = nullptr;
 	jmethodID m_showDialog = nullptr;
 	jmethodID m_hideDialog = nullptr;
 	jmethodID m_showEditObject = nullptr;

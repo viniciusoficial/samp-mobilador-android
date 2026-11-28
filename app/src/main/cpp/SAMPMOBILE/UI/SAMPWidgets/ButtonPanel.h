@@ -29,6 +29,7 @@ private:
 	void recomputeHeldAxes();
 
 	bool m_extended;
+	bool m_pcInputHidden = false;
 
 	/* keys currently held down on the panel; re-pinned every frame in
 	 * draw() so they survive GetKeys' per-read memset and engine hook

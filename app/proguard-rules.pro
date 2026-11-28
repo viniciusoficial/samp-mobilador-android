@@ -3,6 +3,9 @@
 -keep class com.wardrumstudios.utils.* { *; }
 
 -keep class com.sampmobile.game.* { *; }
+# JNI do teclado/mouse: os simbolos Java_com_sampmobile_game_input_KeyboardMouseBridge_*
+# sao resolvidos pelo nome, entao os natives/metodos nao podem ser renomeados.
+-keep class com.sampmobile.game.input.* { *; }
 -keep class com.sampmobile.game.ui.* { *; }
 -keep class com.sampmobile.game.ui.widgets.* { *; }
 -keep class com.sampmobile.game.ui.widgets.adapter.* { *; }
