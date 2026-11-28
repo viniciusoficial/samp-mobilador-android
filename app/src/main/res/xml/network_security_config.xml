@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文流量策略。
+
+  背景（实测结论，不是推测）：CEF 页面有两个来源 ——
+    1. 本地资源虚拟主机 http://cef/...，由 CefResourceProvider 供出；
+    2. 服务端下发的页面 URL，SA-MP 生态里绝大多数是 http://<IP>:<port>。
+  曾经把白名单收窄到「cef / localhost / 127.0.0.1」，结果真机 E2E 直接打出：
+
+      CefWebView: browser 8 onReceivedError http://192.168.0.117:8000/index.html
+                  : -1 net::ERR_CLEARTEXT_NOT_PERMITTED
+
+  也就是说收窄等于把第 2 类来源全部封死 —— 而玩家自建服不可能为了这个客户端
+  去配 HTTPS 证书和域名。domain 规则也不支持 IP 段通配，没法「只放开局域网」。
+
+  所以这里整体放开明文。真正的边界不靠这层：CEF 只会加载服务端下发的 URL，
+  不接受页面内的任意导航；如果将来要收紧，落点就是这个文件（按域白名单），
+  而不是改回全局禁止。
+-->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

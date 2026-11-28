@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="@dimen/_220sdp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/ui_dialog_bg"
+    android:orientation="vertical"
+    android:padding="@dimen/_16sdp">
+
+    <TextView
+        android:id="@+id/add_server_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textStyle="bold"
+        android:letterSpacing="0.12"
+        android:text="@string/add_server"
+        android:textAllCaps="true"
+        android:textColor="@color/launcher_text"
+        android:textSize="@dimen/_12ssp" />
+
+    <View
+        android:layout_width="@dimen/_28sdp"
+        android:layout_height="2dp"
+        android:layout_marginTop="@dimen/_6sdp"
+        android:background="@color/launcher_accent" />
+
+    <EditText
+        android:id="@+id/address_input_text"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/_28sdp"
+        android:layout_marginTop="@dimen/_12sdp"
+        android:background="@drawable/launcher_input_bg"
+        android:hint="@string/host_port_hint"
+        android:imeOptions="actionDone"
+        android:inputType="text"
+        android:maxLines="1"
+        android:paddingStart="@dimen/_10sdp"
+        android:paddingEnd="@dimen/_10sdp"
+        android:textColor="@color/launcher_text"
+        android:textColorHint="@color/launcher_text_dim"
+        android:textSize="@dimen/_9ssp" />
+
+    <TextView
+        android:id="@+id/add_server"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/_30sdp"
+        android:layout_marginTop="@dimen/_10sdp"
+        android:background="@drawable/launcher_btn_primary"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:letterSpacing="0.12"
+        android:text="@string/add"
+        android:textAllCaps="true"
+        android:textColor="@color/launcher_on_accent"
+        android:textSize="@dimen/_9ssp" />
+
+</LinearLayout>

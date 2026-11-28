@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- second-level tabs | process ABI | logs | refresh -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/_38sdp"
+        android:background="@drawable/ui_header_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/_6sdp"
+        android:paddingEnd="@dimen/_10sdp">
+
+        <com.sampmobile.launcher.ui.widget.GtaTabStrip
+            android:id="@+id/mod_tabs"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tv_process_abi"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:background="@drawable/ui_pill"
+            android:paddingHorizontal="@dimen/_8sdp"
+            android:paddingVertical="@dimen/_3sdp"
+            android:textColor="@color/launcher_text_dim"
+            android:textSize="@dimen/_7ssp"
+            tools:text="64位 (arm64-v8a)" />
+
+        <LinearLayout
+            android:id="@+id/btn_mods_logs"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/_24sdp"
+            android:layout_marginStart="@dimen/_6sdp"
+            android:background="@drawable/launcher_btn_outline"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_8sdp"
+            android:paddingEnd="@dimen/_10sdp">
+
+            <ImageView
+                android:layout_width="@dimen/_10sdp"
+                android:layout_height="@dimen/_10sdp"
+                android:src="@drawable/ic_changelogs"
+                android:tint="@color/launcher_accent"
+                tools:ignore="ContentDescription" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_4sdp"
+                android:text="@string/view_logs"
+                android:textColor="@color/launcher_text"
+                android:textSize="@dimen/_8ssp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/btn_mods_refresh"
+            android:layout_width="@dimen/_24sdp"
+            android:layout_height="@dimen/_24sdp"
+            android:layout_marginStart="@dimen/_6sdp"
+            android:background="@drawable/launcher_btn_outline"
+            android:contentDescription="@string/refresh"
+            android:padding="@dimen/_5sdp"
+            android:src="@drawable/ic_restore"
+            android:tint="@color/launcher_text" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/ui_hairline" />
+
+    <!-- list (left) + section control panel (right), same shape as the servers page -->
+    <LinearLayout
+        android:id="@+id/mods_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:layout_marginBottom="@dimen/_8sdp"
+            android:layout_weight="1"
+            android:background="@drawable/launcher_card"
+            android:clipToOutline="true">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_mod_items"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingStart="@dimen/_6sdp"
+                android:paddingTop="@dimen/_6sdp"
+                android:paddingEnd="@dimen/_6sdp"
+                android:paddingBottom="@dimen/_2sdp"
+                android:scrollbars="none" />
+
+            <TextView
+                android:id="@+id/tv_mod_empty"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:lineSpacingExtra="@dimen/_3sdp"
+                android:paddingHorizontal="@dimen/_24sdp"
+                android:textColor="@color/launcher_text_dim"
+                android:textSize="@dimen/_8ssp"
+                android:visibility="gone"
+                tools:text="暂无模组文件" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="@dimen/_196sdp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:layout_marginEnd="@dimen/_8sdp"
+            android:layout_marginBottom="@dimen/_8sdp"
+            android:background="@drawable/launcher_card"
+            android:orientation="vertical"
+            android:padding="@dimen/_10sdp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tv_section_title"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="@color/launcher_text"
+                    android:textSize="@dimen/_11ssp"
+                    android:textStyle="bold"
+                    tools:text="Modloader 资源覆写" />
+
+                <Switch
+                    android:id="@+id/switch_section_master"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:thumb="@drawable/ic_thumb"
+                    android:track="@drawable/bg_track"
+                    tools:ignore="UseSwitchCompatOrMaterialXml,TouchTargetSizeCheck" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_section_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_5sdp"
+                android:textColor="@color/launcher_accent"
+                android:textSize="@dimen/_7ssp"
+                android:textStyle="bold"
+                tools:text="状态：已就绪（双 ABI 原生支持）" />
+
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="@dimen/_6sdp"
+                android:layout_weight="1"
+                android:overScrollMode="never"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tv_section_desc"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:lineSpacingExtra="@dimen/_2sdp"
+                        android:textColor="@color/launcher_text_dim"
+                        android:textSize="@dimen/_7ssp"
+                        tools:text="说明文本" />
+
+                    <TextView
+                        android:id="@+id/tv_section_path"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/_6sdp"
+                        android:background="@drawable/launcher_input_bg"
+                        android:lineSpacingExtra="@dimen/_1sdp"
+                        android:padding="@dimen/_6sdp"
+                        android:textColor="@color/launcher_text_dim"
+                        android:textSize="@dimen/_6ssp"
+                        tools:text="目录：.../files/modloader" />
+                </LinearLayout>
+            </ScrollView>
+
+            <TextView
+                android:id="@+id/btn_action_primary"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_28sdp"
+                android:layout_marginTop="@dimen/_6sdp"
+                android:background="@drawable/launcher_btn_primary"
+                android:gravity="center"
+                android:stateListAnimator="@animator/press_scale"
+                android:textColor="@color/launcher_on_accent"
+                android:textSize="@dimen/_9ssp"
+                android:textStyle="bold"
+                tools:text="导入 ZIP 模组包" />
+
+            <TextView
+                android:id="@+id/btn_action_secondary"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_24sdp"
+                android:layout_marginTop="@dimen/_5sdp"
+                android:background="@drawable/launcher_btn_outline"
+                android:gravity="center"
+                android:textColor="@color/launcher_text"
+                android:textSize="@dimen/_8ssp"
+                android:textStyle="bold"
+                tools:text="新建空模组目录" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btn_action_tertiary"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginTop="@dimen/_5sdp"
+                    android:layout_weight="1"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textColor="@color/launcher_accent"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:text="应用 SA-MP 安全预设" />
+
+                <TextView
+                    android:id="@+id/btn_action_quaternary"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginStart="@dimen/_5sdp"
+                    android:layout_marginTop="@dimen/_5sdp"
+                    android:layout_weight="1"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textColor="@color/launcher_text_dim"
+                    android:textSize="@dimen/_7ssp"
+                    android:visibility="gone"
+                    tools:text="访问 JPatch 官方页" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

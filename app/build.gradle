@@ -1,0 +1,217 @@
+plugins {
+    id "com.android.application"
+    id "com.joom.paranoid"
+}
+
+if (file("google-services.json").exists()) {
+    apply plugin: "com.google.gms.google-services"
+    apply plugin: "com.google.firebase.crashlytics"
+}
+
+def localProps = new Properties()
+def localPropsFile = rootProject.file("local.properties")
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+
+def releaseStorePath = localProps.getProperty("SAMP_STORE_FILE") ?: System.getenv("SAMP_STORE_FILE")
+def releaseStoreFile = releaseStorePath ? file(releaseStorePath) : null
+def hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists()
+def gamedataManifestUrl = (localProps.getProperty("SAMP_GAMEDATA_MANIFEST")
+        ?: System.getenv("SAMP_GAMEDATA_MANIFEST") ?: "").trim()
+
+// Optional bundled-data packaging (tools/packaging/build_bundled_apk.py):
+// points at a prepared assets overlay containing gamedata/bundle.gdz + bundle.json,
+// which gets merged into the APK so first-run extraction needs no download.
+def bundleAssetsDir = (project.findProperty("sampBundleAssets")
+        ?: System.getenv("SAMP_BUNDLE_ASSETS") ?: "").toString().trim()
+if (!bundleAssetsDir.isEmpty() && !file(bundleAssetsDir).isDirectory()) {
+    throw new GradleException("sampBundleAssets points at a missing directory: " + bundleAssetsDir)
+}
+
+// Redirect this module's build output into the repo-level build/ tree, so app/
+// only holds sources and everything generated lives under build/ alongside the
+// packaging artifacts (build/app is what used to be app/build).
+layout.buildDirectory.set(rootProject.file("build/app"))
+
+android {
+    namespace "com.sampmobile.launcher"
+    compileSdk 35
+
+    aaptOptions {
+        // The embedded bundle is already deflate-compressed zip data; compressing it
+        // again inside the APK would double the inflate cost on every first-run
+        // extraction and slow the build for zero size gain.
+        noCompress "gdz"
+    }
+
+    sourceSets {
+        main {
+            if (!bundleAssetsDir.isEmpty()) {
+                assets.srcDir(bundleAssetsDir)
+            }
+        }
+    }
+
+    defaultConfig {
+        applicationId "com.sampmobile.launcher"
+        minSdk 24
+        targetSdk 35
+        versionCode 10004
+        versionName "1.0.0.103"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField "String", "GAMEDATA_MANIFEST_URL", "\"${gamedataManifestUrl.replace('\\', '\\\\').replace('\"', '\\\"')}\""
+
+        ndkVersion "25.1.8937393"
+
+        ndk {
+            abiFilters.add("armeabi-v7a")
+            abiFilters.add("arm64-v8a")
+        }
+    }
+
+    paranoid {
+        applyToBuildTypes = "NOT_DEBUGGABLE"
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile releaseStoreFile
+                storePassword localProps.getProperty("SAMP_STORE_PASSWORD") ?: System.getenv("SAMP_STORE_PASSWORD") ?: ""
+                keyAlias localProps.getProperty("SAMP_KEY_ALIAS") ?: System.getenv("SAMP_KEY_ALIAS") ?: ""
+                keyPassword localProps.getProperty("SAMP_KEY_PASSWORD") ?: System.getenv("SAMP_KEY_PASSWORD") ?: ""
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        debug {
+            // When the shared test key is configured (packaging scripts set the env vars),
+            // sign debug builds with it too: test players can then install debug and release
+            // builds over each other as updates instead of uninstalling first. Fresh machines
+            // without the key still fall back to the standard Android debug keystore.
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+
+    packaging {
+        jniLibs {
+            // Extract native .so files to /data/app/.../lib/<abi>/ so AML (GlossHookBranchBL
+            // ELF gap scanner) and MonetLoader (elf_scanner) can open libGTASA.so on Android 14+.
+            useLegacyPackaging = true
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            outputFileName = "samp.apk"
+        }
+    }
+}
+
+def skipGtasaCheck = project.findProperty("skipGtasaCheck")?.toString()?.toBoolean() ?: false
+
+tasks.register("verifyGtasaAssets") {
+    group = "verification"
+    description = "Verify user-supplied GTA:SA v2.10 binaries and APK assets are prepared before packaging."
+    doLast {
+        if (skipGtasaCheck) {
+            logger.lifecycle("Skipping GTA:SA proprietary asset check (-PskipGtasaCheck=true).")
+            return
+        }
+        def libArm64 = file("src/main/jniLibs/arm64-v8a/libGTASA.so")
+        def libArm32 = file("src/main/jniLibs/armeabi-v7a/libGTASA.so")
+        def assetIndex = file("src/main/assets/assetfile.txt")
+
+        def missing = []
+        if (!libArm64.isFile() && !libArm32.isFile()) {
+            missing << rootProject.relativePath(libArm64) + " (or " + rootProject.relativePath(libArm32) + ")"
+        }
+        if (!assetIndex.isFile()) {
+            missing << rootProject.relativePath(assetIndex)
+        }
+        if (!missing.isEmpty()) {
+            def list = missing.collect { "  - " + it }.join("\n")
+            throw new GradleException(
+                    "Missing proprietary GTA:SA v2.10 runtime files (not distributed in this repository):\n" +
+                    list + "\n\n" +
+                    "Pull from a connected device/emulator with GTA:SA v2.10 installed (recommended):\n" +
+                    "  python tools/engine/prepare_gtasa.py --from-adb\n" +
+                    "Or extract locally from your own GTA:SA Android v2.10 APK:\n" +
+                    "  python tools/engine/prepare_gtasa.py --apk dist/gtasa_2.10.apk\n" +
+                    "(For compile-only dry runs without packaging a playable APK, pass -PskipGtasaCheck=true.)"
+            )
+        }
+        if (!libArm32.isFile()) {
+            logger.warn("NOTE: Packaging 64-bit (arm64-v8a) libGTASA.so only; 32-bit armeabi-v7a/libGTASA.so is not present.")
+        } else if (!libArm64.isFile()) {
+            logger.warn("NOTE: Packaging 32-bit (armeabi-v7a) libGTASA.so only; 64-bit arm64-v8a/libGTASA.so is not present.")
+        }
+    }
+}
+
+tasks.configureEach { t ->
+    if (t.name == "packageDebug" || t.name == "packageRelease") {
+        t.dependsOn("verifyGtasaAssets")
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", includes: ["*.jar"])
+
+    implementation(libs.appcompat)
+    implementation(libs.material)
+    implementation(libs.activity)
+    implementation(libs.constraintlayout)
+    implementation(libs.swiperefreshlayout)
+    implementation(libs.github.glide)
+
+    implementation(libs.sdp.android)
+    implementation(libs.ssp.android)
+
+    implementation(libs.paranoid.gradle.plugin)
+
+    implementation(libs.firebase.crashlytics.ndk)
+
+    implementation(libs.easypermissions)
+    implementation(libs.prdownloader)
+    implementation(libs.okhttp)
+
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.ext.junit)
+    androidTestImplementation(libs.espresso.core)
+}

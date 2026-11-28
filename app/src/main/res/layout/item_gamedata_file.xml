@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="@dimen/_4sdp"
+    android:background="@drawable/ui_item_bg"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="@dimen/_8sdp"
+    android:paddingVertical="@dimen/_6sdp">
+
+    <View
+        android:id="@+id/v_gd_status_dot"
+        android:layout_width="@dimen/_6sdp"
+        android:layout_height="@dimen/_6sdp"
+        android:layout_marginEnd="@dimen/_8sdp"
+        android:background="@drawable/ui_dot" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingEnd="@dimen/_8sdp">
+
+        <TextView
+            android:id="@+id/tv_gd_file_path"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="middle"
+            android:fontFamily="monospace"
+            android:singleLine="true"
+            android:text="texdb/gta3.img"
+            android:textColor="@color/launcher_text"
+            android:textSize="@dimen/_8ssp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_gd_file_desc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_1sdp"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:text="@string/ui_item_gamedata_file_001"
+            android:textColor="@color/launcher_text_dim"
+            android:textSize="@dimen/_7ssp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_gd_file_size"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="@dimen/_8sdp"
+        android:text="0 B"
+        android:textColor="@color/launcher_text_dim"
+        android:textSize="@dimen/_7ssp" />
+
+    <TextView
+        android:id="@+id/tv_gd_file_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/ui_pill"
+        android:paddingHorizontal="@dimen/_6sdp"
+        android:paddingVertical="@dimen/_2sdp"
+        android:text="@string/ui_item_gamedata_file_002"
+        android:textColor="@color/ui_good"
+        android:textSize="@dimen/_7ssp"
+        android:textStyle="bold" />
+</LinearLayout>

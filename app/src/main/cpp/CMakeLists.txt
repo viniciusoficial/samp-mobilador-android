@@ -1,11 +1,6 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.22.1)
 
-include_directories(
-        ${CMAKE_CURRENT_LIST_DIR}/opus/include
-)
+project(SAMPMOBILE)
 
-find_package(shadowhook REQUIRED CONFIG)
-add_subdirectory(opus)
-add_subdirectory(samp)
-
-target_compile_options(opus PRIVATE -O3)
+add_subdirectory(SAMPMOBILE)
+add_subdirectory(SocialClub)

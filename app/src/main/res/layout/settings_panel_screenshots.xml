@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/panel_screenshots"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="@dimen/_12sdp"
+    android:visibility="gone">
+
+    <!-- 卡片：截图模式选择 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/launcher_card"
+        android:orientation="vertical"
+        android:padding="@dimen/_10sdp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ui_settings_panel_screenshots_001"
+                    android:textColor="@color/launcher_accent"
+                    android:textSize="@dimen/_9ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/_1sdp"
+                    android:text="@string/ui_settings_panel_screenshots_002"
+                    android:textColor="@color/launcher_text_dim"
+                    android:textSize="@dimen/_7ssp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/btn_ss_mode_hud"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_26sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:background="@drawable/launcher_btn_primary"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_10sdp"
+                android:text="@string/ui_settings_panel_screenshots_003"
+                android:textColor="@color/launcher_on_accent"
+                android:textSize="@dimen/_8ssp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_ss_mode_game"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_26sdp"
+                android:background="@drawable/launcher_btn_outline"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_10sdp"
+                android:text="@string/ui_settings_panel_screenshots_004"
+                android:textColor="@color/launcher_text"
+                android:textSize="@dimen/_8ssp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 卡片：截图相册 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="@dimen/_8sdp"
+        android:layout_weight="1"
+        android:background="@drawable/launcher_card"
+        android:orientation="vertical"
+        android:padding="@dimen/_10sdp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_screenshots_summary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/ui_settings_panel_screenshots_005"
+                android:textColor="@color/launcher_text_dim"
+                android:textSize="@dimen/_8ssp" />
+
+            <TextView
+                android:id="@+id/btn_ss_refresh"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_24sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:background="@drawable/launcher_btn_outline"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_8sdp"
+                android:text="@string/ui_settings_panel_screenshots_006"
+                android:textColor="@color/launcher_accent"
+                android:textSize="@dimen/_7ssp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_ss_clear_all"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_24sdp"
+                android:background="@drawable/launcher_btn_danger"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_8sdp"
+                android:text="@string/ui_settings_panel_screenshots_007"
+                android:textColor="@color/launcher_danger"
+                android:textSize="@dimen/_7ssp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="@dimen/_6sdp"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_screenshots"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/tv_screenshots_empty"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:lineSpacingExtra="4dp"
+                android:text="@string/ui_settings_panel_screenshots_008"
+                android:textColor="@color/launcher_text_dim"
+                android:textSize="@dimen/_8ssp" />
+        </FrameLayout>
+    </LinearLayout>
+</LinearLayout>

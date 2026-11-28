@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Default launcher background. Drop a picture named launcher_backdrop.jpg / .png / .webp
+     into res/drawable-nodpi/ and it replaces this gradient automatically (see README). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:startColor="#2A2B33"
+        android:centerColor="#1B1C22"
+        android:endColor="#101116" />
+</shape>

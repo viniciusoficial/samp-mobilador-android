@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/panel_gamedata"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="@dimen/_12sdp"
+    android:visibility="gone">
+
+    <!-- 上方卡片：资源概览、版本档位与操作按钮（纯手动触发，绝不自动下载） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/launcher_card"
+        android:orientation="vertical"
+        android:padding="@dimen/_10sdp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:paddingEnd="@dimen/_8sdp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ui_settings_panel_gamedata_001"
+                    android:textColor="@color/launcher_accent"
+                    android:textSize="@dimen/_9ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_gd_summary"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/_2sdp"
+                    android:text="@string/ui_settings_panel_gamedata_002"
+                    android:textColor="@color/launcher_text"
+                    android:textSize="@dimen/_8ssp" />
+
+                <TextView
+                    android:id="@+id/tv_gd_storage_meta"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/_1sdp"
+                    android:text="@string/ui_settings_panel_gamedata_003"
+                    android:textColor="@color/launcher_text_dim"
+                    android:textSize="@dimen/_7ssp" />
+            </LinearLayout>
+
+            <!-- 资源版本档位选择：精简版（当前统一版） / 完整版（2.10 GiB 校验视图） -->
+            <com.sampmobile.launcher.ui.widget.GtaOptionView
+                android:id="@+id/option_gd_edition"
+                android:layout_width="@dimen/_132sdp"
+                android:layout_height="@dimen/_26sdp"
+                android:layout_marginEnd="@dimen/_6sdp" />
+
+            <TextView
+                android:id="@+id/btn_gd_import"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_26sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:background="@drawable/launcher_btn_outline"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_10sdp"
+                android:text="@string/ui_settings_panel_gamedata_004"
+                android:textColor="@color/launcher_text"
+                android:textSize="@dimen/_8ssp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_gd_download"
+                android:tag="theme_accent_bg"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_26sdp"
+                android:background="@drawable/launcher_btn_primary"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_10sdp"
+                android:text="@string/ui_settings_panel_gamedata_005"
+                android:textColor="@color/launcher_on_accent"
+                android:textSize="@dimen/_8ssp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 内联下载进度区（仅用户点击「启动器下载」后展开） -->
+        <LinearLayout
+            android:id="@+id/layout_gd_download_progress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:background="@drawable/ui_item_bg"
+            android:orientation="vertical"
+            android:padding="@dimen/_8sdp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tv_gd_dl_status"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:ellipsize="middle"
+                    android:singleLine="true"
+                    android:text="@string/ui_settings_panel_gamedata_006"
+                    android:textColor="@color/launcher_text"
+                    android:textSize="@dimen/_8ssp" />
+
+                <TextView
+                    android:id="@+id/tv_gd_dl_bytes"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/_8sdp"
+                    android:text="0%"
+                    android:textColor="@color/launcher_accent"
+                    android:textSize="@dimen/_8ssp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <ProgressBar
+                android:id="@+id/pb_gd_download"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_6sdp"
+                android:layout_marginTop="@dimen/_5sdp"
+                android:max="1000"
+                android:progress="0"
+                android:progressDrawable="@drawable/ui_progress_mini" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 下方卡片：游戏文件清单与逐项状态显示 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="@dimen/_8sdp"
+        android:layout_weight="1"
+        android:background="@drawable/launcher_card"
+        android:orientation="vertical"
+        android:padding="@dimen/_10sdp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/tv_gd_list_summary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/ui_settings_panel_gamedata_007"
+                android:textColor="@color/launcher_text_dim"
+                android:textSize="@dimen/_8ssp" />
+
+            <TextView
+                android:id="@+id/btn_gd_filter_all"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_22sdp"
+                android:layout_marginEnd="@dimen/_5sdp"
+                android:background="@drawable/launcher_btn_primary"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_8sdp"
+                android:text="@string/ui_settings_panel_gamedata_008"
+                android:textColor="@color/launcher_on_accent"
+                android:textSize="@dimen/_7ssp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_gd_filter_issues"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_22sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:background="@drawable/launcher_btn_outline"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_8sdp"
+                android:text="@string/ui_settings_panel_gamedata_009"
+                android:textColor="@color/launcher_text"
+                android:textSize="@dimen/_7ssp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_gd_verify"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_22sdp"
+                android:background="@drawable/launcher_btn_outline"
+                android:gravity="center"
+                android:paddingHorizontal="@dimen/_8sdp"
+                android:text="@string/ui_settings_panel_gamedata_010"
+                android:textColor="@color/launcher_accent"
+                android:textSize="@dimen/_7ssp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="@dimen/_6sdp"
+            android:layout_marginBottom="@dimen/_4sdp"
+            android:background="@color/ui_hairline" />
+
+        <TextView
+            android:id="@+id/tv_gd_list_empty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="@string/ui_settings_panel_gamedata_011"
+            android:textColor="@color/launcher_text_dim"
+            android:textSize="@dimen/_8ssp"
+            android:visibility="gone" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_gd_files"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingVertical="@dimen/_2sdp" />
+    </LinearLayout>
+</LinearLayout>
