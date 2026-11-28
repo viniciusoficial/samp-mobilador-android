@@ -522,9 +522,10 @@ void NativeCameraMousePostProcess(sa::CCamera& camera, sa::CCam* targetCam)
 			if (eng::ptr(eng::Sym::CWorld_ProcessLineOfSight) != nullptr) {
 				sa::CColPoint colPoint{};
 				sa::CEntity* hitEntity = nullptr;
-				if (eng::fn::CWorld_ProcessLineOfSight(
+				eng::fn::CWorld_ProcessLineOfSight(
 						&pivot, &desiredSource, &colPoint, &hitEntity,
-						true, false, false, true, false, false, true, false)) {
+						true, false, false, true, false, false, true, false);
+				if (hitEntity != nullptr) {
 					const sa::CVector toHit(
 							colPoint.m_vecPoint.x - pivot.x,
 							colPoint.m_vecPoint.y - pivot.y,
