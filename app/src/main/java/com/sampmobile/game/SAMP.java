@@ -392,145 +392,23 @@ public class SAMP extends GTASA {
         return super.onKeyUp(keyCode, event);
     }
 
-    /* ---------------------------------------------------------------------
-     * Physical mouse: fiel ao handler do mobilador
-     * (rockstargames/oswrapper/view/InputHandler.java).
-     *
-     * O Android entrega o mouse por dois caminhos: eventos de hover/motion
-     * enquanto o cursor anda pela tela e, depois de requestPointerCapture(),
-     * SOMENTE onCapturedPointerEvent() com eixos relativos. Os dois precisam
-     * chegar na camera nativa, senao a camera trava assim que a captura liga.
-     * ------------------------------------------------------------------- */
+    /* ---------------- physical mouse ---------------- */
 
-    private static final int[] TRACKED_MOUSE_BUTTONS = {
-            MotionEvent.BUTTON_PRIMARY,
-            MotionEvent.BUTTON_SECONDARY,
-            MotionEvent.BUTTON_TERTIARY,
-            MotionEvent.BUTTON_BACK,
-            MotionEvent.BUTTON_FORWARD
-    };
-
-    private int mPressedMouseButtons = 0;
+    private int mMouseButtonState = 0;
     private float mLastMouseX = Float.NaN;
     private float mLastMouseY = Float.NaN;
     private boolean mPointerCaptured = false;
 
     private static boolean isMouseSource(int source) {
-        if ((source & InputDevice.SOURCE_TOUCHSCREEN) == InputDevice.SOURCE_TOUCHSCREEN
-                || (source & InputDevice.SOURCE_STYLUS) == InputDevice.SOURCE_STYLUS) {
-            return false;
-        }
         return (source & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE
-                || (source & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE
-                || (source & InputDevice.SOURCE_TOUCHPAD) == InputDevice.SOURCE_TOUCHPAD
-                || (source & InputDevice.SOURCE_TRACKBALL) == InputDevice.SOURCE_TRACKBALL;
-    }
-
-    private static boolean isCapturedMouseCandidate(int source) {
-        if (isMouseSource(source)) {
-            return true;
-        }
-        return (source & InputDevice.SOURCE_TOUCHSCREEN) == 0
-                && (source & InputDevice.SOURCE_STYLUS) == 0
-                && (source & InputDevice.SOURCE_GAMEPAD) == 0
-                && (source & InputDevice.SOURCE_JOYSTICK) == 0;
-    }
-
-    private static int mouseButtonToNativeIndex(int buttonMask) {
-        if (buttonMask == MotionEvent.BUTTON_PRIMARY) return 1;
-        if (buttonMask == MotionEvent.BUTTON_SECONDARY) return 2;
-        if (buttonMask == MotionEvent.BUTTON_TERTIARY) return 3;
-        if (buttonMask == MotionEvent.BUTTON_BACK) return 4;
-        if (buttonMask == MotionEvent.BUTTON_FORWARD) return 5;
-        return 0;
-    }
-
-    private static boolean isMouseButtonAction(int action) {
-        return action == MotionEvent.ACTION_BUTTON_PRESS
-                || action == MotionEvent.ACTION_BUTTON_RELEASE
-                || action == MotionEvent.ACTION_DOWN
-                || action == MotionEvent.ACTION_UP
-                || action == MotionEvent.ACTION_POINTER_DOWN
-                || action == MotionEvent.ACTION_POINTER_UP;
-    }
-
-    private static boolean isMouseButtonDownAction(int action) {
-        return action == MotionEvent.ACTION_BUTTON_PRESS
-                || action == MotionEvent.ACTION_DOWN
-                || action == MotionEvent.ACTION_POINTER_DOWN;
-    }
-
-    private int resolveMouseButton(MotionEvent event, int action) {
-        int button = event.getActionButton();
-        if (button != 0) {
-            return button;
-        }
-        final int state = event.getButtonState();
-        if (isMouseButtonDownAction(action)) {
-            final int newlyPressed = state & ~mPressedMouseButtons;
-            for (int mask : TRACKED_MOUSE_BUTTONS) {
-                if ((newlyPressed & mask) != 0) return mask;
-            }
-            for (int mask : TRACKED_MOUSE_BUTTONS) {
-                if ((state & mask) != 0) return mask;
-            }
-            return MotionEvent.BUTTON_PRIMARY;
-        } else {
-            final int releasedButton = mPressedMouseButtons & ~state;
-            for (int mask : TRACKED_MOUSE_BUTTONS) {
-                if ((releasedButton & mask) != 0) return mask;
-            }
-            for (int mask : TRACKED_MOUSE_BUTTONS) {
-                if ((mPressedMouseButtons & mask) != 0) return mask;
-            }
-            return MotionEvent.BUTTON_PRIMARY;
-        }
-    }
-
-    private boolean updatePressedMouseButtons(int buttonMask, boolean down) {
-        if (mouseButtonToNativeIndex(buttonMask) < 1) {
-            return false;
-        }
-        final boolean currentlyPressed = (mPressedMouseButtons & buttonMask) != 0;
-        if (currentlyPressed == down) {
-            return false;
-        }
-        if (down) {
-            mPressedMouseButtons |= buttonMask;
-        } else {
-            mPressedMouseButtons &= ~buttonMask;
-        }
-        return true;
-    }
-
-    private void sendMouseButton(int buttonMask, boolean down) {
-        if (!updatePressedMouseButtons(buttonMask, down)) {
-            return;
-        }
-        try {
-            onMouseButton(mouseButtonToNativeIndex(buttonMask), down);
-        } catch (UnsatisfiedLinkError ignored) {
-        }
-    }
-
-    private void releaseMouseButtons() {
-        final int buttons = mPressedMouseButtons;
-        mPressedMouseButtons = 0;
-        for (int mask : TRACKED_MOUSE_BUTTONS) {
-            if ((buttons & mask) != 0) {
-                try {
-                    onMouseButton(mouseButtonToNativeIndex(mask), false);
-                } catch (UnsatisfiedLinkError ignored) {
-                }
-            }
-        }
+                || (source & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE;
     }
 
     private void updatePointerCapture(boolean wantCapture) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getWindow() == null) {
             return;
         }
-        final View decor = getWindow().getDecorView();
+        View decor = getWindow().getDecorView();
         if (decor == null) {
             return;
         }
@@ -542,80 +420,38 @@ public class SAMP extends GTASA {
                 decor.releasePointerCapture();
                 mPointerCaptured = false;
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                decor.setPointerIcon(android.view.PointerIcon.getSystemIcon(this,
-                        mPointerCaptured ? android.view.PointerIcon.TYPE_NULL
-                                : android.view.PointerIcon.TYPE_ARROW));
-            }
         } catch (Throwable ignored) {
         }
-        mLastMouseX = Float.NaN;
-        mLastMouseY = Float.NaN;
+    }
+
+    private void dispatchMouseButton(int changed, int buttons, int mask, int index) {
+        if ((changed & mask) == 0) {
+            return;
+        }
+        final boolean pressed = (buttons & mask) != 0;
+        try {
+            onMouseButton(index, pressed);
+        } catch (UnsatisfiedLinkError ignored) {
+        }
     }
 
     @Override
     public void onPointerCaptureChanged(boolean hasCapture) {
         mPointerCaptured = hasCapture;
-        mLastMouseX = Float.NaN;
-        mLastMouseY = Float.NaN;
         if (!hasCapture) {
-            releaseMouseButtons();
+            mLastMouseX = Float.NaN;
+            mLastMouseY = Float.NaN;
         }
-    }
-
-    /**
-     * While the pointer is captured Android stops sending hover/motion events and
-     * delivers everything here, with relative axes. Without this override the
-     * camera never receives a single delta after the capture starts.
-     */
-    @Override
-    public boolean onCapturedPointerEvent(MotionEvent event) {
-        if (event == null || !isCapturedMouseCandidate(event.getSource())) {
-            return false;
-        }
-        return handleMouseMotion(event, true);
     }
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
-        if (event != null && isMouseSource(event.getSource())) {
-            return handleMouseMotion(event, false);
-        }
-        return super.onGenericMotionEvent(event);
-    }
-
-    private boolean handleMouseMotion(MotionEvent event, boolean capturedEvent) {
-        // Chat / IME / Java dialog owns the mouse: do not spin the camera.
-        if (ui != null && ui.isInputFocused()) {
-            return true;
+        if (!isMouseSource(event.getSource()) || ui == null) {
+            return super.onGenericMotionEvent(event);
         }
 
-        final int action = event.getActionMasked();
-        final int source = event.getSource();
-
-        if (action == MotionEvent.ACTION_HOVER_ENTER || action == MotionEvent.ACTION_HOVER_EXIT) {
-            mLastMouseX = Float.NaN;
-            mLastMouseY = Float.NaN;
-            return true;
-        }
-
-        if (isMouseButtonAction(action)) {
-            sendMouseButton(resolveMouseButton(event, action), isMouseButtonDownAction(action));
-            if (!capturedEvent && !mPointerCaptured) {
-                updatePointerCapture(true);
-            }
-            return true;
-        }
-
-        if (action == MotionEvent.ACTION_CANCEL) {
-            releaseMouseButtons();
-            mLastMouseX = Float.NaN;
-            mLastMouseY = Float.NaN;
-            return true;
-        }
-
-        if (action == MotionEvent.ACTION_SCROLL) {
-            final float wheel = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
+        if (event.getActionMasked() == MotionEvent.ACTION_SCROLL) {
+            float wheel = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
             if (wheel != 0.0f) {
                 try {
                     onMouseWheel(wheel > 0.0f ? 1 : -1);
@@ -625,53 +461,40 @@ public class SAMP extends GTASA {
             return true;
         }
 
-        if (action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_MOVE) {
-            float dx = 0.0f;
-            float dy = 0.0f;
-            final boolean hasRelativeSource =
-                    (source & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE;
+        updatePointerCapture(true);
 
-            if (capturedEvent || hasRelativeSource) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
-                    dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
-                }
-                if (dx == 0.0f && dy == 0.0f) {
-                    final float rx = event.getX();
-                    final float ry = event.getY();
-                    if (!capturedEvent && !Float.isNaN(mLastMouseX)) {
-                        dx = rx - mLastMouseX;
-                        dy = ry - mLastMouseY;
-                    }
-                    mLastMouseX = rx;
-                    mLastMouseY = ry;
-                }
-            } else {
-                final float x = event.getX();
-                final float y = event.getY();
-                if (!Float.isNaN(mLastMouseX)) {
-                    dx = x - mLastMouseX;
-                    dy = y - mLastMouseY;
-                }
-                mLastMouseX = x;
-                mLastMouseY = y;
-            }
-
-            if (!Float.isFinite(dx)) dx = 0.0f;
-            if (!Float.isFinite(dy)) dy = 0.0f;
-
-            if (dx != 0.0f || dy != 0.0f) {
-                try {
-                    onMouseDelta(dx, dy);
-                } catch (UnsatisfiedLinkError ignored) {
-                }
-                if (!capturedEvent && !mPointerCaptured) {
-                    updatePointerCapture(true);
-                }
-            }
-            return true;
+        final int buttons = event.getButtonState();
+        if (buttons != mMouseButtonState) {
+            final int changed = buttons ^ mMouseButtonState;
+            dispatchMouseButton(changed, buttons, MotionEvent.BUTTON_PRIMARY, 1);
+            dispatchMouseButton(changed, buttons, MotionEvent.BUTTON_SECONDARY, 2);
+            dispatchMouseButton(changed, buttons, MotionEvent.BUTTON_TERTIARY, 3);
+            mMouseButtonState = buttons;
         }
 
+        float dx = 0.0f;
+        float dy = 0.0f;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
+            dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
+        }
+        if (dx == 0.0f && dy == 0.0f) {
+            final float x = event.getX();
+            final float y = event.getY();
+            if (!Float.isNaN(mLastMouseX)) {
+                dx = x - mLastMouseX;
+                dy = y - mLastMouseY;
+            }
+            mLastMouseX = x;
+            mLastMouseY = y;
+        }
+
+        if (dx != 0.0f || dy != 0.0f) {
+            try {
+                onMouseDelta(dx, dy);
+            } catch (UnsatisfiedLinkError ignored) {
+            }
+        }
         return true;
     }
 
@@ -765,9 +588,6 @@ public class SAMP extends GTASA {
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus) {
             inputArbiter.onWindowFocusLost();
-            releaseMouseButtons();
-            mLastMouseX = Float.NaN;
-            mLastMouseY = Float.NaN;
         }
     }
 
@@ -775,11 +595,11 @@ public class SAMP extends GTASA {
     public void onPause() {
         Log.i(TAG, "**** onPause");
         inputArbiter.onActivityPause();
-        releaseMouseButtons();
         try {
             onMouseReset();
         } catch (UnsatisfiedLinkError ignored) {
         }
+        mMouseButtonState = 0;
         mLastMouseX = Float.NaN;
         mLastMouseY = Float.NaN;
         updatePointerCapture(false);
