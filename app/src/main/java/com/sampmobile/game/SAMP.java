@@ -436,13 +436,12 @@ public class SAMP extends GTASA {
     }
 
     @Override
-    public boolean onPointerCaptureChanged(boolean hasCapture) {
+    public void onPointerCaptureChanged(boolean hasCapture) {
         mPointerCaptured = hasCapture;
         if (!hasCapture) {
             mLastMouseX = Float.NaN;
             mLastMouseY = Float.NaN;
         }
-        return true;
     }
 
     @Override
