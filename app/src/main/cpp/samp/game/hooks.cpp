@@ -31,6 +31,10 @@
 #include "Widgets/TouchInterface.h"
 #include "game/BuildingRemoval.h"
 
+#include "Scene.h"
+#include "Mobile/MobileSettings/MobileSettings.h"
+#include "../settings.h"
+
 #include "graphics/ES2VertexBuffer.h"
 #include "graphics/RQ_Commands.h"
 #include "graphics/RQShader.h"
@@ -2234,3 +2238,90 @@ void InstallHooks()
     InstallCrashFixHooks();
     InstallMiscHooks();
 }
+// ================= NEXION: definicoes (fim do hooks.cpp) =================
+extern float* ms_fAspectRatio;
+extern void CameraSize(RwCamera* camera, RwRect* rect, RwReal viewWindow, RwReal aspectRatio);
+
+namespace
+{
+    float g_customAspectRatio = 0.0f;
+}
+
+// Aplica no motor os valores do painel Nexion gravados em SAMP/settings.ini.
+void ApplyNexionGraphicsSettings()
+{
+    if (!g_libGTASA || pSettings == nullptr)
+        return;
+
+    const stSettings& settings = pSettings->Get();
+
+    for (int index = 0; index < stSettings::NexionMobileSettingCount; ++index)
+    {
+        if (settings.iNexionMobileSettings[index] >= 0)
+            CMobileSettings::ms_MobileSettings[index].value = settings.iNexionMobileSettings[index];
+    }
+
+    auto applyRange = [&settings](eMobileSettings id, int saved, int fallback, int lowest, int highest)
+    {
+        if (settings.iNexionMobileSettings[id] >= 0)
+            return;
+
+        int value = saved;
+        if (value < lowest || value > highest)
+            value = fallback;
+        CMobileSettings::ms_MobileSettings[id].value = value;
+    };
+
+    applyRange(MS_Resolution,     settings.iNexionRenderScale,    100, 25, 100);
+    applyRange(MS_DrawDistance,   settings.iNexionDrawDistance,   100,  0, 100);
+    applyRange(MS_Visuals,        settings.iNexionVisualEffects,    2,  0,   3);
+    applyRange(MS_Shadows,        -1, 1, 0, 2);
+    applyRange(MS_CarReflections, -1, 2, 0, 2);
+
+    LOGI("Nexion graphics: res=%d dist=%d visuals=%d shadows=%d reflections=%d",
+         CMobileSettings::ms_MobileSettings[MS_Resolution].value,
+         CMobileSettings::ms_MobileSettings[MS_DrawDistance].value,
+         CMobileSettings::ms_MobileSettings[MS_Visuals].value,
+         CMobileSettings::ms_MobileSettings[MS_Shadows].value,
+         CMobileSettings::ms_MobileSettings[MS_CarReflections].value);
+}
+
+float (*CDraw__CalculateAspectRatio)();
+float CDraw__CalculateAspectRatio_hook()
+{
+    float result = CDraw__CalculateAspectRatio ? CDraw__CalculateAspectRatio() : 0.0f;
+    if (g_customAspectRatio > 0.1f)
+    {
+        if (ms_fAspectRatio)
+            *ms_fAspectRatio = g_customAspectRatio;
+        return g_customAspectRatio;
+    }
+    return result;
+}
+
+void SetNexionAspectRatio(float aspectRatio)
+{
+    g_customAspectRatio = aspectRatio;
+    if (aspectRatio <= 0.1f)
+    {
+        if (ms_fAspectRatio)
+            *ms_fAspectRatio = CDraw__CalculateAspectRatio ? CDraw__CalculateAspectRatio() : 0.0f;
+        return;
+    }
+
+    if (ms_fAspectRatio)
+        *ms_fAspectRatio = aspectRatio;
+
+    if (g_libGTASA)
+    {
+        CScene& scenes = *reinterpret_cast<CScene*>(g_libGTASA + 0xCD0868);
+        if (scenes.m_pRwCamera)
+            CameraSize(scenes.m_pRwCamera, nullptr, 0.7f, aspectRatio);
+    }
+}
+
+int GetNexionTargetingMode()
+{
+    return g_libGTASA ? CMobileSettings::ms_MobileSettings[MS_Targeting].value : 1;
+}
+// ================= NEXION: fim =================
