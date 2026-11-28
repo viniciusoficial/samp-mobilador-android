@@ -281,7 +281,7 @@ void PcInputSetAction(int action, bool pressed)
     if (action == static_cast<int>(PcInputAction::ENTER) && pressed && !wasPressed &&
         pUI != nullptr && pUI->dialog()->visible())
     {
-        pUI->dialog()->confirm();
+       // pUI->dialog()->confirm();
         Log("PC input action: confirmed native dialog");
     }
 
