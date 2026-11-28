@@ -17,7 +17,6 @@
 #include "game/Pools.h"
 #include "../java/jniutil.h"
 #include "obfuscate/str_obfuscator.hpp"
-#include "nexioncontrols.h"
 
 extern CNetGame* pNetGame;
 extern CPlayerTags* pPlayerTags;
@@ -113,12 +112,6 @@ void UI::render()
 
     renderDebug();
 
-    // Desenha os controles nexion (joystick, botões, câmera, teclado integrado)
-    if (pGame && !pUI->keyboard()->visible())
-    {
-        NexionControls::Draw(renderer()->drawList(), size(), UISettings::fontSize() / 30.0f);
-    }
-
     ProcessPushedTextdraws();
 
     if (m_bNeedClearMousePos) {
@@ -178,34 +171,21 @@ bool UI::OnTouchEvent(int type, bool multi, int x, int y)
     ImGuiIO& io = ImGui::GetIO();
 
     VoiceButton* vbutton = pUI->voicebutton();
-
-    // Encaminha para o sistema nexion: movimenta o jogador, a câmera, botões
-    // e keyboard (se aberto). Retorna true quando o toque foi consumido pelo
-    // NexionControls e não deve embolar o GUI do GTA.
-    if (!NexionControls::HandleTouch(type, 0, x, y))
+    switch (type)
     {
-        switch (type)
-        {
-            case TOUCH_PUSH:
-                io.MousePos = ImVec2(x, y);
-                io.MouseDown[0] = true;
-                break;
+        case TOUCH_PUSH:
+            io.MousePos = ImVec2(x, y);
+            io.MouseDown[0] = true;
+            break;
 
-            case TOUCH_POP:
-                io.MouseDown[0] = false;
-                m_bNeedClearMousePos = true;
-                break;
+        case TOUCH_POP:
+            io.MouseDown[0] = false;
+            m_bNeedClearMousePos = true;
+            break;
 
-            case TOUCH_MOVE:
-                io.MousePos = ImVec2(x, y);
-                break;
-        }
-    }
-    else if (type == TOUCH_POP)
-    {
-        // Se o nexion consumiu, ainda liberamos o mouse quando o dedo sai.
-        io.MouseDown[0] = false;
-        m_bNeedClearMousePos = true;
+        case TOUCH_MOVE:
+            io.MousePos = ImVec2(x, y);
+            break;
     }
 
     return true;
