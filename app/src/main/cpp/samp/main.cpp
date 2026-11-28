@@ -1,4 +1,4 @@
-﻿#include <jni.h>
+#include <jni.h>
 #include <pthread.h>
 #include <syscall.h>
 
@@ -303,7 +303,7 @@ void InitGui()
     pUI->performLayout();
 
 	// Inicializa o sistema de controles nexion (mouse virtual, teclado, /MOB)
-	NexionControls::Reset();
+//	NexionControls::Reset();
 }
 
 #include "armhook/patch.h"
