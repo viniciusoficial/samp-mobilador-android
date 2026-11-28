@@ -10,6 +10,7 @@ endif ()
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/Deps/Bass
     ${CMAKE_CURRENT_SOURCE_DIR}/Deps/spdlog/include
     ${CMAKE_CURRENT_SOURCE_DIR}/Deps/Opus/include
 )

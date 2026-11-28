@@ -13,7 +13,7 @@
 #include "PlayerPed.h"
 #include "Util.h"
 #include "../Client.h"
-#include <bass.h>
+#include <Bass.h>
 #include <spdlog/spdlog.h>
 
 

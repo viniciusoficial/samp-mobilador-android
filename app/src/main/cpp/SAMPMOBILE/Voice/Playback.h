@@ -1,6 +1,6 @@
 #pragma once
 
-#include <bass.h>
+#include <Bass.h>
 
 class Playback {
 	Playback() = delete;

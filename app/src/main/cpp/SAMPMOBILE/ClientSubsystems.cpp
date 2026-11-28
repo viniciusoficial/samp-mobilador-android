@@ -7,7 +7,7 @@
 #include "Game/ModLoader.h"
 #include "Voice/Plugin.h"
 
-#include <bass.h>
+#include <Bass.h>
 
 namespace ClientSubsystems {
 
