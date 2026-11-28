@@ -2,9 +2,6 @@
 #include "../main.h"
 #include "../vendor/armhook/patch.h"
 #include "game.h"
-#include "native_camera_mouse.h"
-#include "CFirstPersonCamera.hpp"
-#include "Camera.h"
 #include "../net/netgame.h"
 #include "../gui/gui.h"
 #include "Textures/TextureDatabase.h"
@@ -33,182 +30,18 @@
 #include "java/jniutil.h"
 #include "Widgets/TouchInterface.h"
 #include "game/BuildingRemoval.h"
+
 #include "graphics/ES2VertexBuffer.h"
 #include "graphics/RQ_Commands.h"
 #include "graphics/RQShader.h"
 #include "Mobile/MobileMenu/MobileMenu.h"
 #include "Mobile/MobileSettings/MobileSettings.h"
-#include "../gui/nexioncontrols.h"
-#include "../settings.h"
 ///skip for now later if above is already converted
 extern UI* pUI;
 extern CGame* pGame;
-extern CSettings* pSettings;
 extern CNetGame *pNetGame;
 extern MaterialTextGenerator* pMaterialTextGenerator;
 extern CJavaWrapper *pJavaWrapper;
-
-namespace
-{
-    bool g_nexionParticleEffects = true;
-    bool g_nexionDistanceFog = true;
-    bool g_nexionSkidmarks = true;
-    int g_nexionGeneralSensitivity = 50;
-    int g_nexionAimSensitivity = 50;
-    float g_nexionMasterVolume = 1.0f;
-    float g_nexionMusicVolume = 1.0f;
-    float g_nexionRadioVolume = 1.0f;
-
-    int ClampNexionPercent(int value)
-    {
-        return std::max(1, std::min(value, 100));
-    }
-
-    void SetNativeMobileSetting(eMobileSettings id, int value)
-    {
-        auto& setting = CMobileSettings::ms_MobileSettings[id];
-        setting.value = std::max(setting.min, std::min(value, setting.max));
-    }
-}
-
-void SetNexionParticleEffectsEnabled(bool enabled) { g_nexionParticleEffects = enabled; }
-bool GetNexionParticleEffectsEnabled() { return g_nexionParticleEffects; }
-void SetNexionDistanceFogEnabled(bool enabled) { g_nexionDistanceFog = enabled; }
-bool GetNexionDistanceFogEnabled() { return g_nexionDistanceFog; }
-void SetNexionSkidmarksEnabled(bool enabled)
-{
-    g_nexionSkidmarks = enabled;
-    if (g_libGTASA) SetNativeMobileSetting(MS_Traffic, enabled ? 1 : 0);
-}
-bool GetNexionSkidmarksEnabled() { return g_nexionSkidmarks; }
-void SetNexionWorldDrawDistance(int value)
-{
-    if (g_libGTASA) SetNativeMobileSetting(MS_DrawDistance, value);
-}
-void SetNexionGeneralCameraSensitivity(int value)
-{
-    g_nexionGeneralSensitivity = ClampNexionPercent(value);
-    if (g_libGTASA) {
-        SetNativeMobileSetting(MS_MouseSensitivityX, g_nexionGeneralSensitivity);
-        SetNativeMobileSetting(MS_MouseSensitivityY, g_nexionGeneralSensitivity);
-    }
-}
-int GetNexionGeneralCameraSensitivity() { return g_nexionGeneralSensitivity; }
-void SetNexionAimCameraSensitivity(int value) { g_nexionAimSensitivity = ClampNexionPercent(value); }
-int GetNexionAimCameraSensitivity() { return g_nexionAimSensitivity; }
-void SetNexionMasterVolume(float value) { g_nexionMasterVolume = std::max(0.0f, std::min(value, 1.0f)); }
-float GetNexionMasterVolume() { return g_nexionMasterVolume; }
-void SetNexionMusicVolume(float value)
-{
-    g_nexionMusicVolume = std::max(0.0f, std::min(value, 1.0f));
-    if (g_libGTASA) SetNativeMobileSetting(MS_MusicVolume, static_cast<int>(g_nexionMusicVolume * 100.0f));
-}
-float GetNexionMusicVolume() { return g_nexionMusicVolume; }
-void SetNexionRadioVolume(float value) { g_nexionRadioVolume = std::max(0.0f, std::min(value, 1.0f)); }
-float GetNexionRadioVolume() { return g_nexionRadioVolume; }
-void SetNexionRadioAutoTune(bool enabled) { if (g_libGTASA) SetNativeMobileSetting(MS_Autotune, enabled ? 1 : 0); }
-void SetNexionRadioStation(int station) { if (g_libGTASA) SetNativeMobileSetting(MS_DefaultStation, station); }
-
-// Aplica no jogo os valores do painel Nexion que ja estavam gravados em
-// SAMP/settings.ini. Sem esta chamada o cliente ignorava completamente
-// RenderScale/DrawDistance/VisualEffects e o motor renderizava no preset mais
-// baixo (imagem serrilhada, pouca distancia e nenhum efeito).
-void ApplyNexionGraphicsSettings()
-{
-    if (!g_libGTASA || pSettings == nullptr)
-        return;
-
-    const stSettings& settings = pSettings->Get();
-
-    // Valores escolhidos no menu nativo (MobileSettingNN) tem prioridade.
-    for (int index = 0; index < stSettings::NexionMobileSettingCount; ++index)
-    {
-        if (settings.iNexionMobileSettings[index] >= 0)
-            CMobileSettings::ms_MobileSettings[index].value = settings.iNexionMobileSettings[index];
-    }
-
-    // A tabela nativa e criada zerada pelo InjectHooks, entao os defaults que
-    // normalmente viriam dela (min/max/defaultValue) se perdem. Os limites sao
-    // fixados aqui para nao entregar valor invalido ao motor.
-    auto applyRange = [&settings](eMobileSettings id, int saved, int fallback, int lowest, int highest)
-    {
-        if (settings.iNexionMobileSettings[id] >= 0)
-            return;
-
-        int value = saved;
-        if (value < lowest || value > highest)
-            value = fallback;
-        CMobileSettings::ms_MobileSettings[id].value = value;
-    };
-
-    applyRange(MS_Resolution, settings.iNexionRenderScale, 100, 25, 100);
-    applyRange(MS_DrawDistance, settings.iNexionDrawDistance, 100, 0, 100);
-    applyRange(MS_Visuals, settings.iNexionVisualEffects, 2, 0, 3);
-    applyRange(MS_Shadows, -1, 1, 0, 2);
-    applyRange(MS_CarReflections, -1, 2, 0, 2);
-
-    LOGI("Nexion graphics: res=%d dist=%d visuals=%d shadows=%d reflections=%d",
-         CMobileSettings::ms_MobileSettings[MS_Resolution].value,
-         CMobileSettings::ms_MobileSettings[MS_DrawDistance].value,
-         CMobileSettings::ms_MobileSettings[MS_Visuals].value,
-         CMobileSettings::ms_MobileSettings[MS_Shadows].value,
-         CMobileSettings::ms_MobileSettings[MS_CarReflections].value);
-}
-extern float* ms_fAspectRatio;
-extern void CameraSize(RwCamera* camera, RwRect* rect, RwReal viewWindow, RwReal aspectRatio);
-
-namespace
-{
-    float g_customAspectRatio = 0.0f;
-}
-
-float (*CDraw__CalculateAspectRatio)();
-float CDraw__CalculateAspectRatio_hook()
-{
-    float result = CDraw__CalculateAspectRatio ? CDraw__CalculateAspectRatio() : 0.0f;
-    if (g_customAspectRatio > 0.1f)
-    {
-        if (ms_fAspectRatio)
-        {
-            *ms_fAspectRatio = g_customAspectRatio;
-        }
-        return g_customAspectRatio;
-    }
-    return result;
-}
-
-void SetNexionAspectRatio(float aspectRatio)
-{
-    g_customAspectRatio = aspectRatio;
-    if (aspectRatio <= 0.1f)
-    {
-        // "Automatico": volta para a proporcao nativa calculada pelo jogo.
-        if (ms_fAspectRatio)
-        {
-            *ms_fAspectRatio = CDraw__CalculateAspectRatio ? CDraw__CalculateAspectRatio() : 0.0f;
-        }
-        return;
-    }
-
-    if (ms_fAspectRatio)
-    {
-        *ms_fAspectRatio = aspectRatio;
-    }
-
-    if (g_libGTASA)
-    {
-        CScene& scenes = *reinterpret_cast<CScene*>(g_libGTASA + 0xCD0868);
-        if (scenes.m_pRwCamera)
-        {
-            CameraSize(scenes.m_pRwCamera, nullptr, 0.7f, aspectRatio);
-        }
-    }
-}
-
-int GetNexionTargetingMode()
-{
-    return g_libGTASA ? CMobileSettings::ms_MobileSettings[MS_Targeting].value : 1;
-}
 
 static void (*CFont_PrintString)(float posX, float posY, uint16_t* text);
 
@@ -302,18 +135,7 @@ void MainLoop();
 void(*Render2dStuff)();
 void Render2dStuff_hook()
 {
-    /* Render2dStuff precisa rodar ANTES da interface do SA-MP: e' ele que
-       monta a projecao ortografica 2D e o estado de render usado por
-       CFont/CSprite2d. Desenhando antes dele, TextDraws e chat eram
-       desenhados com a matriz 3D do frame e sumiam/ficavam deformados. */
-   // CrashTrace("render2d:world2d");
     Render2dStuff();
-
-    if (g_customAspectRatio > 0.1f && ms_fAspectRatio)
-    {
-        *ms_fAspectRatio = g_customAspectRatio;
-    }
-
     MainLoop();
 
     if (pNetGame && pGame && !pGame->IsGamePaused())
@@ -325,17 +147,12 @@ void Render2dStuff_hook()
         }
 
         CTextDrawPool* pTextDrawPool = pNetGame->GetTextDrawPool();
-        if (pTextDrawPool) {
-            //CrashTrace("render2d:textdraws");
+        if (pTextDrawPool && pTextDrawPool->GetState() == false) {
             pTextDrawPool->SnapshotProcess();
-            pTextDrawPool->Draw();
         }
     }
 
-    if (pUI) {
-        //CrashTrace("render2d:ui");
-        pUI->render();
-    }
+    if (pUI) pUI->render();
 }
 
 /* =============================================================================== */
@@ -355,7 +172,6 @@ void CRadar_DrawRadarGangOverlay_hook(uint32_t unk)
 }
 
 int (*CRadar__SetCoordBlip)(int r0, float X, float Y, float Z, int r4, int r5, char *name);
-
 int CRadar__SetCoordBlip_hook(int r0, float X, float Y, float Z, int r4, int r5, char *name)
 {
     if (pNetGame && !strncmp(name, "CODEWAY", 7))
@@ -620,9 +436,6 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
     if (pGame->IsGamePaused())
         return AND_TouchEvent(type, num, posX, posY);
 
-    if (NexionControls::HandleTouch(type, num, posX, posY))
-        return;
-
     if (pUI != nullptr)
     {
         switch (type)
@@ -656,12 +469,7 @@ void AND_TouchEvent_hook(int type, int num, int posX, int posY)
     }
 
     if (pGame->IsGameInputEnabled())
-    {
-        if (PcInputIsEnabledForTouch() && !CFirstPersonCamera::IsEnabled())
-            AND_TouchEvent(1, 0, 0, 0);
-        else
-            AND_TouchEvent(type, num, posX, posY);
-    }
+        AND_TouchEvent(type, num, posX, posY);
     else
         AND_TouchEvent(1, 0, 0, 0);
 }
@@ -734,9 +542,7 @@ int64 CWeapon__FireInstantHit_hook(CWeapon* thiz, CPedGTA* pFiringEntity, CVecto
                                    CVector* target, CVector* originForDriveBy, bool arg6, bool muzzle)
 {
 
-    CPlayerPed* pLocalFirePed = (pNetGame && pNetGame->GetPlayerPool() && pNetGame->GetPlayerPool()->GetLocalPlayer())
-                                ? pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed() : nullptr;
-    if (pLocalFirePed && pLocalFirePed->m_pPed)		// CWeapon::Fire
+    if (pNetGame && pNetGame->GetPlayerPool()->GetLocalPlayer()->GetPlayerPed()->m_pPed)		// CWeapon::Fire
     {
         if(pFiringEntity != GamePool_FindPlayerPed())
             return muzzle;
@@ -772,10 +578,8 @@ uint32_t CWeapon__ProcessLineOfSight_hook(CVector *vecOrigin, CVector *vecEnd, C
     uintptr_t dwRetAddr = 0;
     GET_LR(dwRetAddr);
 
-    // NAO logar aqui. Este hook roda em TODO teste de linha de visada do jogo
-    // (tiro, IA, camera) e Log() faz fseek+ftell+fprintf+fflush em arquivo sob
-    // mutex: era o maior gargalo de FPS do cliente. O endereco de retorno so
-    // e' usado na comparacao abaixo, nao precisa ser impresso.
+    Log("dwRetAddr CWeapon__ProcessLineOfSight_hook 0x%llx", dwRetAddr);
+
     if(dwRetAddr >= 0x6FA408 && dwRetAddr <= 0x6FAE44)
         g_bForceWorldProcessLineOfSight = true;
 
@@ -953,8 +757,7 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
                                               calculator->m_fDamageFactor,
                                               calculator->m_weaponType,
                                               calculator->m_pedPieceType);
-            CRemotePlayer* pDamagedPlayer = pPlayerPool->GetAt(PlayerID);
-            if (pDamagedPlayer && pDamagedPlayer->IsNPC())
+            if (pPlayerPool->GetAt(PlayerID)->IsNPC())
                 return true;
         }
         else
@@ -977,7 +780,6 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
     uint8_t byteTeam = pPlayerPool->GetLocalPlayer()->m_byteTeam;
     if (byteTeam == NO_TEAM ||
         PlayerID == INVALID_PLAYER_ID ||
-        !pPlayerPool->GetAt(PlayerID) ||
         pPlayerPool->GetAt(PlayerID)->m_byteTeam != byteTeam) {
         return false;
     }
@@ -985,21 +787,15 @@ bool ComputeDamageResponse(CPedDamageResponseCalculator* calculator, CPedGTA* pP
     return true;
 }
 
+#include "CFirstPersonCamera.hpp"
 //#include "CHandlingDefault.h"
-
-
 
 void (*CCam__Process)(uintptr_t thiz);
 
 void CCam__Process_hook(uintptr_t thiz)
 {
-    static CCamera& TheCamera = *reinterpret_cast<CCamera*>(g_libGTASA + 0x9F86F8);
-    CCam* cam = reinterpret_cast<CCam*>(thiz);
-
     if (!CFirstPersonCamera::IsEnabled()) {
-        NativeCameraMousePreProcess(TheCamera, cam);
         CCam__Process(thiz);
-        NativeCameraMousePostProcess(TheCamera, cam);
         return;
     }
 
@@ -1590,14 +1386,8 @@ void NvUtilInit_hook() {
 
     LOGI("Storage located at %s", g_pszStorage);
     NvUtilInit();
+    ApplyFPSPatch(120);
     ReadSettingFile();
-    uint8_t fpsLimit = 60;
-    if (pSettings != nullptr)
-    {
-        const int configuredFPS = pSettings->Get().iFPSCount;
-        fpsLimit = static_cast<uint8_t>(std::clamp(configuredFPS, 30, 144));
-    }
-    ApplyFPSPatch(fpsLimit);
 
 }
 
@@ -1722,14 +1512,9 @@ void MainMenu_OnStartSAMP()
 unsigned int (*MainMenuScreen__Update)(uintptr_t thiz, float a2);
 unsigned int MainMenuScreen__Update_hook(uintptr_t thiz, float a2)
 {
-    if (!g_bPlaySAMP)
-    {
-        // Start the SAMP transition before the offline front-end update is
-        // rendered; Menu_NewGame remains the engine's world bootstrap. Keep
-        // the original update below for the engine's normal return/state flow.
-        MainMenu_OnStartSAMP();
-    }
-    return MainMenuScreen__Update(thiz, a2);
+    unsigned int ret = MainMenuScreen__Update(thiz, a2);
+    MainMenu_OnStartSAMP();
+    return ret;
 }
 
 void (*StartGameScreen__OnNewGameCheck)();
@@ -2091,18 +1876,9 @@ void InjectHooks()
     CWidgetGta::InjectHooks();
     CGame::InjectHooks();
     CSprite2d::InjectHooks();
-	CStreamingInfo::InjectHooks();
-	RQShader::InjectHooks();
-	CRenderer::InjectHooks();
-	// These two modules expose the real pause/map state and the native
-	// graphics/input settings table used by libGame.so.  They were defined
-	// but never installed on the main hook path.
-	CMobileMenu::InjectHooks();
-	CMobileSettings::InjectHooks();
-	// CRealTimeShadowManager was never installed. Without these hooks the native
-	// ReturnRealTimeShadow crashes (SIGSEGV, fault 0x190) whenever a ped is
-	// destroyed and the shadow manager is not initialised.
-	CRealTimeShadowManager::InjectHooks();
+    CStreamingInfo::InjectHooks();
+    RQShader::InjectHooks();
+    CRenderer::InjectHooks();
 }
 
 void (*CPlaceable_InitMatrixArray)(void);
@@ -2111,12 +1887,16 @@ void CPlaceable_InitMatrixArray_hook(void)
     // CMatrixLinkList::Init
     ((void (*)(uintptr_t, size_t))(g_libGTASA + 0x4AC048))(g_libGTASA + 0xA01668, 10000);
 }
-int (*_RwTextureDestroy)(uintptr_t a1);
-int _RwTextureDestroy_hook(uintptr_t a1)
+int (*_RwTextureDestroy)(int a1);
+int _RwTextureDestroy_hook(int a1)
 {
-    if (a1 && a1 != static_cast<uintptr_t>(-1))
-        return _RwTextureDestroy(a1);
-    return 0;
+    int result; // r0
+
+    if ( (unsigned int)(a1 + 1) >= 2 )
+        result = _RwTextureDestroy(a1);
+    else
+        result = 0;
+    return result;
 }
 
 
@@ -2421,11 +2201,6 @@ void InstallHooks()
 
 
     CHook::InlineHook("_ZN5CDraw6SetFOVEfb", &CDraw__SetFOV_hook, &CDraw__SetFOV);
-    CHook::InlineHook("_ZN5CDraw20CalculateAspectRatioEv", &CDraw__CalculateAspectRatio_hook, &CDraw__CalculateAspectRatio);
-    if (g_customAspectRatio > 0.1f && ms_fAspectRatio)
-    {
-        *ms_fAspectRatio = g_customAspectRatio;
-    }
     CHook::InlineHook("_ZN10CStreaming5Init2Ev", &CStreaming__Init2_hook, &CStreaming__Init2);
 
     //CHook::InlineHook("mpg123_param", &mpg123_param_hook, &mpg123_param);
