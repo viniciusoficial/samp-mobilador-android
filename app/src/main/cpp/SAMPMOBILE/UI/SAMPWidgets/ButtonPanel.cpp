@@ -13,6 +13,7 @@
 #include "../../Game/Game.h"
 #include "../../Game/Hooks.h"
 #include "../../Game/Pad.h"
+#include "../../Game/NativeCameraMouse.h"
 #include "../../Game/PlayerPed.h"
 #include "../../Game/Util.h"
 #include "../../Game/Common.h"
@@ -450,6 +451,8 @@ void ButtonPanel::applyHeldKeys()
 	if (m_heldUD) {
 		LocalPlayerKeys.wKeyUD = m_heldUD;
 	}
+	/* same reason: mouse buttons (LMB/RMB/MMB) are held keys too */
+	NativeCameraMouseApplyKeys();
 }
 
 void ButtonPanel::draw(ImGuiRenderer* renderer)

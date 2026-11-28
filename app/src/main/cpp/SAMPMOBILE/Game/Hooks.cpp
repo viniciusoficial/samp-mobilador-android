@@ -3,7 +3,7 @@
 #include "Hooks.h"
 #include "Hooks/HookDomains.h"
 #include "Pickups.h"
-#include "PcMouseLook.h"
+#include "NativeCameraMouse.h"
 #include "RemoveBuilding.h"
 #include <spdlog/spdlog.h>
 
@@ -21,7 +21,7 @@ void Hooks::install()
 	RemoveBuilding::installHooks();
 
 	installPadHooks();
-	pcmouse::installHooks();
+	InstallNativeCameraMouseHooks();
 	installWidgetFixHooks();
 	installCrosshairFixHooks();
 }
