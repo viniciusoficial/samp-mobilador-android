@@ -45,13 +45,19 @@ jobs:
         id: locate
         run: |
           mkdir -p apk-output
-          find app/build/outputs/apk -type f -name "*.apk" -exec cp {} apk-output/ \; 2>/dev/null || true
+
+          echo "Procurando APK no projeto..."
+
+          find build/app/outputs/apk -type f -name "*.apk" \
+            -exec cp {} apk-output/ \; 2>/dev/null || true
 
           echo "APKs encontrados:"
           ls -lh apk-output/
 
           if [ -z "$(ls -A apk-output/)" ]; then
             echo "Nenhum APK foi encontrado!"
+            echo "Verificando outros diretórios..."
+            find . -type f -name "*.apk" -print
             exit 1
           fi
 
