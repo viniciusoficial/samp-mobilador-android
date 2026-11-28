@@ -26,20 +26,29 @@ public:
 		//if (Server == 13) m_texture_micro_on = (RwTexture*)CUtil::LoadTextureFromDB("samp", "icon_micro_off");
 	}
 
-	virtual void draw(ImGuiRenderer* renderer) override
+		virtual void draw(ImGuiRenderer* renderer) override
 	{
-		if(!pSettings->Get().bVoiceChatEnable) return;
+		if (!renderer || !pSettings || !pSettings->Get().bVoiceChatEnable) return;
 
 		if (countdown > 0 && recording() == 1) countdown--;
 		if (countdown == 0 && recording() == 1) setRecording(0);
-		renderer->drawImage(absolutePosition(), absolutePosition() + size(),
-			recording() ? m_texture_micro_on->raster : m_texture_micro_off->raster);
+
+		RwTexture* texture = recording() ? m_texture_micro_on : m_texture_micro_off;
+		if (texture && texture->raster)
+		{
+			renderer->drawImage(absolutePosition(), absolutePosition() + size(), texture->raster);
+		}
+		else
+		{
+			// As texturas micro_active/micro_passive podem nao existir na texdb.
+			ImColor fallback = recording() ? ImColor(220, 70, 70, 220) : ImColor(90, 90, 90, 190);
+			renderer->drawRect(absolutePosition(), absolutePosition() + size(), fallback, true, 6.0f);
+		}
 
 		//MyLog2("%f,%f",absolutePosition(), absolutePosition() + size());
 		//MyLog2("countdown %d", countdown);
 		//MyLog2("recording %d", recording());
 		//MyLog2("press %d", press);
-		
 	}
 
 	void touchPopEvent() override
